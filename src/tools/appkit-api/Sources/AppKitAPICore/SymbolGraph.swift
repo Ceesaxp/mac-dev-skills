@@ -35,7 +35,7 @@ public struct Symbol: Decodable, Sendable {
 
     /// The macOS entry from the availability list, if any.
     public var macOSAvailability: Availability? {
-        availability?.first { $0.domain == "macOS" }
+        availability?.first { $0.domain?.caseInsensitiveCompare("macOS") == .orderedSame }
     }
 }
 
@@ -44,7 +44,11 @@ public struct Availability: Decodable, Sendable {
         public let major: Int
         public let minor: Int?
         public let patch: Int?
-        public var string: String { "\(major).\(minor ?? 0)" }
+        public var string: String {
+            var s = "\(major).\(minor ?? 0)"
+            if let patch, patch != 0 { s += ".\(patch)" }
+            return s
+        }
     }
     public let domain: String?
     public let introduced: Version?

@@ -2,6 +2,27 @@ import Testing
 import Foundation
 @testable import AppKitAPICore
 
+@Test func patchVersionPreservedInAvailabilityString() throws {
+    let json = """
+    {
+      "symbols": [
+        {
+          "kind": { "identifier": "swift.class", "displayName": "Class" },
+          "identifier": { "precise": "s:SomeClass", "interfaceLanguage": "swift" },
+          "names": { "title": "SomeClass" },
+          "pathComponents": ["SomeClass"],
+          "declarationFragments": [],
+          "availability": [ { "domain": "macOS", "introduced": { "major": 10, "minor": 15, "patch": 4 } } ]
+        }
+      ],
+      "relationships": []
+    }
+    """
+    let graph = try JSONDecoder().decode(SymbolGraph.self, from: Data(json.utf8))
+    let symbol = try #require(graph.symbols.first)
+    #expect(symbol.macOSAvailability?.introducedString == "10.15.4")
+}
+
 @Test func decodesSymbolGraph() throws {
     let data = Data(Fixtures.appKit.utf8)
     let graph = try JSONDecoder().decode(SymbolGraph.self, from: data)

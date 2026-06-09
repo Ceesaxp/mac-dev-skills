@@ -61,7 +61,10 @@ public struct Extractor: Sendable {
     /// Load all `<module>*.symbols.json` files in `dir` into decoded graphs.
     public func loadGraphs(in dir: URL, module: String) throws -> [SymbolGraph] {
         let files = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
-            .filter { $0.lastPathComponent.hasPrefix(module) && $0.pathExtension == "json" }
+            .filter { f in
+                let n = f.lastPathComponent
+                return f.pathExtension == "json" && (n == "\(module).symbols.json" || n.hasPrefix("\(module)@"))
+            }
         guard !files.isEmpty else { throw ExtractorError.noGraphs(dir) }
         let dec = JSONDecoder()
         return try files.map { try dec.decode(SymbolGraph.self, from: Data(contentsOf: $0)) }
@@ -73,6 +76,10 @@ public struct Extractor: Sendable {
         return SymbolIndex(graphs: try loadGraphs(in: dir, module: module))
     }
 
+    /// Runs a subprocess synchronously and returns its stdout as a trimmed string.
+    /// Reads pipes *after* `waitUntilExit()` — intended for short-output commands such as
+    /// `xcrun` or the `swift` driver (whose symbol graphs go to `-output-dir`, not stdout).
+    /// A command that emits more than the pipe buffer (~64 KB) to stdout/stderr could deadlock.
     @discardableResult
     static func run(_ launchPath: String, _ args: [String]) throws -> String {
         let proc = Process()

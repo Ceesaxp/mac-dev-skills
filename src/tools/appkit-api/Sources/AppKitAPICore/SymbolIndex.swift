@@ -30,12 +30,14 @@ public struct SymbolIndex: Sendable {
         self.memberPreciseByContainer = members
     }
 
-    /// Exact qualified-name lookup ("Type" or "Type.member"). Returns the first match.
+    /// Exact qualified-name lookup ("Type" or "Type.member"). Returns the FIRST match when several
+    /// declarations share a qualified name (e.g. overloads or cross-extension redeclarations) —
+    /// this is an existence/availability check; use members(of:) or search to enumerate all.
     public func check(_ qualified: String) -> Symbol? {
         byQualified[qualified]?.first
     }
 
-    /// All symbols whose qualified name or title contains `name`.
+    /// All symbols whose qualified name or title equals `name` (case-insensitive).
     public func availability(of name: String) -> [Symbol] {
         if let exact = byQualified[name] { return exact }
         let lower = name.lowercased()
@@ -73,7 +75,7 @@ public struct SymbolIndex: Sendable {
         return all
             .compactMap { s in score(s).map { (s, $0) } }
             .sorted { ($0.1, $0.0.names.title) < ($1.1, $1.0.names.title) }
-            .prefix(limit)
+            .prefix(max(0, limit))
             .map(\.0)
     }
 }
