@@ -7,7 +7,10 @@ symbol exist, and what macOS version does it require?" from
 
 ## Build
 ```bash
-swift build -c release        # or: scripts/build-tools.sh from the repo root
+# from this package directory (src/tools/appkit-api/):
+swift build -c release
+# or, from the repo root, build + ad-hoc-sign + install all tools:
+scripts/build-tools.sh
 ```
 
 ## Usage
