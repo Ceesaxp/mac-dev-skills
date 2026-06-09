@@ -1,0 +1,139 @@
+[
+  {
+    "id": "glass-effect-view-basic",
+    "title": "Wrap content in Liquid Glass with NSGlassEffectView",
+    "summary": "Use NSGlassEffectView to render a Liquid Glass background behind arbitrary content, with a configurable corner radius, tint, and style — the modern replacement for layering custom blur views.",
+    "category": "Liquid Glass & concentricity",
+    "keySymbols": [
+      "NSGlassEffectView",
+      "NSGlassEffectView.contentView",
+      "NSGlassEffectView.cornerRadius",
+      "NSGlassEffectView.style",
+      "NSGlassEffectView.tintColor",
+      "NSGlassEffectViewStyle"
+    ],
+    "tags": [
+      "liquid glass",
+      "glass effect",
+      "translucent background",
+      "frosted glass",
+      "material",
+      "vibrancy"
+    ],
+    "minMacOS": "26.0",
+    "swiftCode": "import AppKit\n\nfinal class GlassCardController: NSViewController {\n    override func loadView() {\n        let glass = NSGlassEffectView()\n        glass.translatesAutoresizingMaskIntoConstraints = false\n        glass.cornerRadius = 16\n        glass.tintColor = .controlAccentColor.withAlphaComponent(0.15)\n\n        let label = NSTextField(labelWithString: \"Liquid Glass\")\n        label.font = .preferredFont(forTextStyle: .title2)\n        label.translatesAutoresizingMaskIntoConstraints = false\n        glass.contentView = label\n\n        NSLayoutConstraint.activate([\n            label.centerXAnchor.constraint(equalTo: glass.centerXAnchor),\n            label.centerYAnchor.constraint(equalTo: glass.centerYAnchor)\n        ])\n        view = glass\n    }\n}",
+    "imports": ["AppKit"],
+    "pitfalls": [
+      "Assign your view to contentView; do not addSubview directly — NSGlassEffectView manages its own content hierarchy.",
+      "Set cornerRadius on the glass view rather than clipping a wrapper layer, so the glass edge stays crisp."
+    ],
+    "related": ["glass-effect-container-merging", "concentric-corner-configuration", "visual-effect-view-material"],
+    "replaces": "manually layering NSVisualEffectView with custom CALayer blur",
+    "whenToUse": "Reach for Liquid Glass on floating, content-forward surfaces (cards, panels, overlays) on macOS 26+. The HIG advises using glass to establish hierarchy without heavy chrome; avoid stacking glass on glass, which muddies legibility.",
+    "higReference": {
+      "section": "Materials",
+      "url": "https://developer.apple.com/design/human-interface-guidelines/materials"
+    }
+  },
+  {
+    "id": "concentric-corner-configuration",
+    "title": "Concentric nested corners with NSViewCornerConfiguration",
+    "summary": "Use NSView.cornerConfiguration with the containerConcentric radius so a nested view's corners stay visually concentric with its rounded container, instead of hardcoding a child radius.",
+    "category": "Liquid Glass & concentricity",
+    "keySymbols": [
+      "NSView.cornerConfiguration",
+      "NSViewCornerConfiguration",
+      "NSViewCornerRadius.containerConcentric",
+      "NSViewCornerConfiguration.uniformCorners(radius:)",
+      "NSView.effectiveCornerRadii"
+    ],
+    "tags": [
+      "concentric corners",
+      "nested corner radius",
+      "rounded corners",
+      "corner configuration",
+      "liquid glass"
+    ],
+    "minMacOS": "27.0",
+    "swiftCode": "import AppKit\n\nfinal class BadgeView: NSView {\n    init() {\n        super.init(frame: .zero)\n        wantsLayer = true\n        // Stay concentric with whatever rounded container holds this view.\n        cornerConfiguration = NSViewCornerConfiguration.uniformCorners(\n            radius: NSViewCornerRadius.containerConcentric\n        )\n    }\n\n    required init?(coder: NSCoder) { fatalError(\"init(coder:) has not been implemented\") }\n}",
+    "imports": ["AppKit"],
+    "pitfalls": [
+      "effectiveCornerRadii is read-only — react to changes in viewDidChangeEffectiveCornerRadii, do not try to set it.",
+      "containerConcentric only resolves when an ancestor actually defines a corner radius; otherwise it falls back to zero."
+    ],
+    "related": ["corner-config-readonly", "glass-effect-view-basic"],
+    "replaces": "hardcoding child corner radii that drift out of sync with the container",
+    "whenToUse": "Use concentric corners whenever a control nests inside a rounded container (a glass card, a sidebar capsule) so the inner and outer curves share a center, which the HIG calls out as essential to a cohesive Liquid Glass look. Prefer it over fixed radii on macOS 27+.",
+    "higReference": {
+      "section": "Layout",
+      "url": "https://developer.apple.com/design/human-interface-guidelines/layout"
+    }
+  },
+  {
+    "id": "tableview-view-based-reuse",
+    "title": "View-based NSTableView with makeView + register cell reuse",
+    "summary": "Drive a view-based NSTableView from a delegate that vends reusable NSTableCellView instances via makeView(withIdentifier:owner:), registering a nib or programmatic cell so rows recycle efficiently.",
+    "category": "Lists & collections",
+    "keySymbols": [
+      "NSTableView.makeView(withIdentifier:owner:)",
+      "NSTableView.register(_:forIdentifier:)",
+      "NSTableCellView",
+      "NSTableViewDelegate.tableView(_:viewFor:row:)",
+      "NSTableColumn.identifier"
+    ],
+    "tags": [
+      "table",
+      "list",
+      "data grid",
+      "rows",
+      "cell reuse",
+      "view based table"
+    ],
+    "swiftCode": "import AppKit\n\nfinal class PeopleTableController: NSViewController, NSTableViewDelegate, NSTableViewDataSource {\n    let tableView = NSTableView()\n    var people: [String] = [\"Ada\", \"Grace\", \"Alan\"]\n    private let cellID = NSUserInterfaceItemIdentifier(\"NameCell\")\n\n    func numberOfRows(in tableView: NSTableView) -> Int { people.count }\n\n    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {\n        let cell = tableView.makeView(withIdentifier: cellID, owner: self) as? NSTableCellView ?? {\n            let view = NSTableCellView()\n            let text = NSTextField(labelWithString: \"\")\n            text.translatesAutoresizingMaskIntoConstraints = false\n            view.addSubview(text)\n            view.textField = text\n            view.identifier = cellID\n            NSLayoutConstraint.activate([\n                text.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),\n                text.centerYAnchor.constraint(equalTo: view.centerYAnchor)\n            ])\n            return view\n        }()\n        cell.textField?.stringValue = people[row]\n        return cell\n    }\n}",
+    "imports": ["AppKit"],
+    "pitfalls": [
+      "The identifier you pass to makeView must match the cell view's identifier, or reuse silently breaks and you allocate a new view every row.",
+      "Set the cell's textField outlet so NSTableCellView's built-in appearance updates (selection, backgroundStyle) work."
+    ],
+    "related": ["tableview-diffable-datasource", "outlineview-datasource-delegate", "splitviewcontroller-sidebar-inspector"],
+    "whenToUse": "Use a view-based NSTableView for homogeneous, scrollable lists of records where each row is a lightweight cell; the HIG recommends tables for structured data the user scans or sorts. For richer grid layouts prefer NSCollectionView.",
+    "higReference": {
+      "section": "Tables",
+      "url": "https://developer.apple.com/design/human-interface-guidelines/tables"
+    }
+  },
+  {
+    "id": "splitviewcontroller-sidebar-inspector",
+    "title": "Sidebar/content/inspector layout with NSSplitViewController",
+    "summary": "Compose a three-pane window — sidebar, content, inspector — with NSSplitViewController and dedicated sidebar/inspector split view items, getting collapsing, full-height layout, and toolbar integration for free.",
+    "category": "Window & navigation",
+    "keySymbols": [
+      "NSSplitViewController",
+      "NSSplitViewItem(sidebarWithViewController:)",
+      "NSSplitViewItem(inspectorWithViewController:)",
+      "NSSplitViewController.toggleSidebar(_:)",
+      "NSSplitViewItem.isCollapsed",
+      "NSSplitViewItem.allowsFullHeightLayout"
+    ],
+    "tags": [
+      "sidebar",
+      "inspector",
+      "split view",
+      "three pane",
+      "source list",
+      "navigation"
+    ],
+    "swiftCode": "import AppKit\n\nfinal class MainSplitController: NSSplitViewController {\n    override func viewDidLoad() {\n        super.viewDidLoad()\n\n        let sidebar = NSSplitViewItem(sidebarWithViewController: SidebarController())\n        sidebar.allowsFullHeightLayout = true\n        sidebar.minimumThickness = 180\n\n        let content = NSSplitViewItem(viewController: ContentController())\n\n        let inspector = NSSplitViewItem(inspectorWithViewController: InspectorController())\n        inspector.canCollapse = true\n\n        addSplitViewItem(sidebar)\n        addSplitViewItem(content)\n        addSplitViewItem(inspector)\n    }\n}\n\nfinal class SidebarController: NSViewController { override func loadView() { view = NSView() } }\nfinal class ContentController: NSViewController { override func loadView() { view = NSView() } }\nfinal class InspectorController: NSViewController { override func loadView() { view = NSView() } }",
+    "imports": ["AppKit"],
+    "pitfalls": [
+      "Use the sidebarWithViewController: / inspectorWithViewController: initializers, not a plain item, so the panes get system sidebar material and the toggleSidebar toolbar wiring.",
+      "Pair allowsFullHeightLayout with NSToolbarItem.Identifier.sidebarTrackingSeparator to keep the toolbar divider aligned with the sidebar edge."
+    ],
+    "related": ["unified-toolbar-window-style", "windowcontroller-content-viewcontroller", "tableview-view-based-reuse"],
+    "whenToUse": "Use NSSplitViewController for the canonical macOS sidebar/content/inspector shell; the HIG describes the sidebar as the primary navigation surface for apps with distinct top-level sections. Prefer it over hand-rolled NSSplitView wiring.",
+    "higReference": {
+      "section": "Split views",
+      "url": "https://developer.apple.com/design/human-interface-guidelines/split-views"
+    }
+  }
+]
