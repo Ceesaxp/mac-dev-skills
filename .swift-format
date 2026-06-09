@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "lineLength": 120,
+  "indentation": {
+    "spaces": 4
+  },
+  "tabWidth": 4,
+  "maximumBlankLines": 1,
+  "respectsExistingLineBreaks": true,
+  "lineBreakBeforeControlFlowKeywords": false,
+  "lineBreakBeforeEachArgument": false,
+  "lineBreakBeforeEachGenericRequirement": false,
+  "prioritizeKeepingFunctionOutputTogether": false,
+  "indentConditionalCompilationBlocks": true,
+  "lineBreakAroundMultilineExpressionChainComponents": false,
+  "fileScopedDeclarationPrivacy": {
+    "accessLevel": "private"
+  },
+  "indentSwitchCaseLabels": false,
+  "spacesAroundRangeFormationOperators": false,
+  "rules": {
+    "NeverForceUnwrap": true,
+    "NeverUseForceTry": true,
+    "NeverUseImplicitlyUnwrappedOptionals": true,
+    "OrderedImports": true,
+    "AlwaysUseLowerCamelCase": true,
+    "TypeNamesShouldBeCapitalized": true,
+    "DoNotUseSemicolons": true,
+    "NoParensAroundConditions": true,
+    "NoEmptyTrailingClosureParentheses": true,
+    "NoLabelsInCasePatterns": true,
+    "ReturnVoidInsteadOfEmptyTuple": true,
+    "NoVoidReturnOnFunctionSignature": true,
+    "UseShorthandTypeNames": true,
+    "UseSingleLinePropertyGetter": true,
+    "UseLetInEveryBoundCaseVariable": true,
+    "UseEarlyExits": true,
+    "OneCasePerLine": true,
+    "OneVariableDeclarationPerLine": true,
+    "FullyIndirectEnum": true,
+    "GroupNumericLiterals": true,
+    "NoBlockComments": true,
+    "AlwaysUseLiteralForEmptyCollectionInit": true,
+    "NoAccessLevelOnExtensionDeclaration": true,
+    "DontRepeatTypeInStaticProperties": true,
+    "UseSynthesizedInitializer": true,
+    "AllPublicDeclarationsHaveDocumentation": false,
+    "ValidateDocumentationComments": false,
+    "BeginDocumentationCommentWithOneLineSummary": false
+  }
+}
