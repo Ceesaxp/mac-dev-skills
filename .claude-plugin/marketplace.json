@@ -1,0 +1,15 @@
+{
+  "name": "mac-dev-skills",
+  "owner": { "name": "Mark", "url": "https://github.com/malstrom/mac-dev-skills" },
+  "version": "0.1.0",
+  "plugins": [
+    {
+      "name": "appkit",
+      "version": "0.1.0",
+      "description": "Build, design, test, modernize, and ship native macOS AppKit apps (macOS 26/27).",
+      "source": "./plugins/appkit",
+      "category": "macos-development",
+      "tags": ["macos", "appkit", "swift", "liquid-glass", "testflight", "mac-app-store"]
+    }
+  ]
+}
