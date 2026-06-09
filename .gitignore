@@ -29,6 +29,10 @@ generated-headers/
 plugins/appkit/skills/**/appkit-api
 plugins/appkit/skills/**/appkit-search
 
+# Python
+__pycache__/
+*.pyc
+
 # Logs / scratch
 *.log
 
