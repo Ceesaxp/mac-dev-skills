@@ -27,7 +27,7 @@
       "Assign your view to contentView; do not addSubview directly — NSGlassEffectView manages its own content hierarchy.",
       "Set cornerRadius on the glass view rather than clipping a wrapper layer, so the glass edge stays crisp."
     ],
-    "related": ["glass-effect-container-merging", "concentric-corner-configuration", "visual-effect-view-material"],
+    "related": ["concentric-corner-configuration"],
     "replaces": "manually layering NSVisualEffectView with custom CALayer blur",
     "whenToUse": "Reach for Liquid Glass on floating, content-forward surfaces (cards, panels, overlays) on macOS 26+. The HIG advises using glass to establish hierarchy without heavy chrome; avoid stacking glass on glass, which muddies legibility.",
     "higReference": {
@@ -61,7 +61,7 @@
       "effectiveCornerRadii is read-only — react to changes in viewDidChangeEffectiveCornerRadii, do not try to set it.",
       "containerConcentric only resolves when an ancestor actually defines a corner radius; otherwise it falls back to zero."
     ],
-    "related": ["corner-config-readonly", "glass-effect-view-basic"],
+    "related": ["glass-effect-view-basic"],
     "replaces": "hardcoding child corner radii that drift out of sync with the container",
     "whenToUse": "Use concentric corners whenever a control nests inside a rounded container (a glass card, a sidebar capsule) so the inner and outer curves share a center, which the HIG calls out as essential to a cohesive Liquid Glass look. Prefer it over fixed radii on macOS 27+.",
     "higReference": {
@@ -95,7 +95,7 @@
       "The identifier you pass to makeView must match the cell view's identifier, or reuse silently breaks and you allocate a new view every row.",
       "Set the cell's textField outlet so NSTableCellView's built-in appearance updates (selection, backgroundStyle) work."
     ],
-    "related": ["tableview-diffable-datasource", "outlineview-datasource-delegate", "splitviewcontroller-sidebar-inspector"],
+    "related": ["splitviewcontroller-sidebar-inspector"],
     "whenToUse": "Use a view-based NSTableView for homogeneous, scrollable lists of records where each row is a lightweight cell; the HIG recommends tables for structured data the user scans or sorts. For richer grid layouts prefer NSCollectionView.",
     "higReference": {
       "section": "Tables",
@@ -129,7 +129,7 @@
       "Use the sidebarWithViewController: / inspectorWithViewController: initializers, not a plain item, so the panes get system sidebar material and the toggleSidebar toolbar wiring.",
       "Pair allowsFullHeightLayout with NSToolbarItem.Identifier.sidebarTrackingSeparator to keep the toolbar divider aligned with the sidebar edge."
     ],
-    "related": ["unified-toolbar-window-style", "windowcontroller-content-viewcontroller", "tableview-view-based-reuse"],
+    "related": ["tableview-view-based-reuse"],
     "whenToUse": "Use NSSplitViewController for the canonical macOS sidebar/content/inspector shell; the HIG describes the sidebar as the primary navigation surface for apps with distinct top-level sections. Prefer it over hand-rolled NSSplitView wiring.",
     "higReference": {
       "section": "Split views",

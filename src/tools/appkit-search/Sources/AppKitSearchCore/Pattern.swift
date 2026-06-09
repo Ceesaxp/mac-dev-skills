@@ -1,5 +1,26 @@
 import Foundation
 
+/// The canonical set of category labels in the corpus taxonomy. The full 69-pattern
+/// corpus authored by the separate workflow must keep `category` within this set; the
+/// integrity tests enforce it so authoring drift surfaces immediately.
+public let knownCategories: Set<String> = [
+    "Liquid Glass & concentricity",
+    "Modern input",
+    "Auto Layout",
+    "Lists & collections",
+    "Drag & drop",
+    "Window & navigation",
+    "Sheets, alerts & panels",
+    "App lifecycle",
+    "Status bar",
+    "Text",
+    "Controls",
+    "Color & appearance",
+    "Accessibility",
+    "SF Symbols",
+    "Documents",
+]
+
 /// A reference to the macOS Human Interface Guidelines page consulted when authoring
 /// a pattern's behavioral guidance.
 public struct HIGReference: Codable, Sendable, Equatable {
