@@ -130,7 +130,13 @@ swift symbolgraph-extract -module-name <Module> \
 
 **Corpus (v1 = curated, embedded JSON in `Data/`):** canonical AppKit patterns — control selection, view-based `NSTableView`, `NSSplitViewController`, `NSToolbar`, sheets/panels, `NSGlassEffectView`/Liquid Glass, concentricity, state restoration, modern input — seeded from the WWDC-2026 session-289 code and hand-curated snippets. (Apple has no clean WinUI-Gallery analog to scrape; live sample-fetch is a documented later enhancement, not v1.)
 
-**Verbs:** `appkit-search search "<feature>" …` (batch) · `get <id> …` · `list [--tag]`. Output: shortlist (search) → full snippet + namespace/import hints + pitfalls (get). Engine: BM25 + stop-words + synonyms (port the win-dev approach).
+**Grounding (mandatory — two authorities per pattern):**
+1. **Apple HIG** for *canonical behavior* — when to use which control, layout/spacing conventions, the platform "feel". Every corpus entry's `whenToUse` guidance and control choice must be grounded in the relevant macOS Human Interface Guidelines page (`developer.apple.com/design/human-interface-guidelines/…`), and the entry carries a `higReference` (section title + URL). Corpus authors MUST consult the live HIG page for their pattern (WebFetch) and cite it; a quality gate rejects patterns whose guidance contradicts or omits the HIG.
+2. **`appkit-api`** for *symbol/availability correctness* — every `keySymbol` and `minMacOS` in an entry is machine-verified against the SDK with the tool we shipped in Phase 1a.
+
+So each pattern = HIG-grounded *guidance* + API-verified *code*. The schema therefore includes at least `whenToUse` and `higReference` fields in addition to the code/imports/pitfalls/availability fields.
+
+**Verbs:** `appkit-search search "<feature>" …` (batch) · `get <id> …` · `list [--tag]`. Output: shortlist (search) → full snippet + namespace/import hints + pitfalls + HIG reference (get). Engine: BM25 + stop-words + synonyms (port the win-dev approach).
 
 **Build/tests:** SwiftPM executable; **Swift Testing** for BM25 scoring, tokenization, and corpus-integrity tests.
 
