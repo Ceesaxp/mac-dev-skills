@@ -102,8 +102,16 @@ Status legend: **have** (draft exists, polish), **NEW** (write from scratch).
 
 **Problem solved:** the agent should never guess whether a symbol exists or what macOS version it needs — the exact failure mode in `appkit-liquid-glass-concentricity` ("interactive-glass API name TBD, verify in docs").
 
-**Data source:** the **active SDK's textual Swift interfaces** —
-`$(xcrun --show-sdk-path)/System/Library/Frameworks/<Framework>.framework/Modules/<Framework>.swiftmodule/*.swiftinterface` — which carry the full public API surface plus `@available(macOS …)` attributes. Parsing approach: SwiftSyntax (preferred) over the `.swiftinterface` text; fall back to `swift symbolgraph-extract` if needed.
+**Data source (verified 2026-06-09):** `swift symbolgraph-extract` JSON, not `.swiftinterface`. AppKit is an Objective-C framework whose availability lives in headers/apinotes, so a Swift interface is incomplete — but the symbol graph captures everything through the importer. Verified on this machine (Xcode 27 / macOS 27 SDK): `AppKit.symbols.json` = 16,933 symbols, each carrying `availability` (`{domain, introduced:{major,minor}, deprecated, message}`). It correctly reports `NSGlassEffectView` → macOS 26.0, `NSViewCornerConfiguration` → 27.0, `NSScrollEdgeEffectStyle` → 26.1, and **resolves the modern skill's currently-"TBD" interactive-glass API to `NSGlassEffectView.effectIsInteractive` (macOS 27.0)**. Extraction command:
+
+```
+swift symbolgraph-extract -module-name <Module> \
+  -sdk "$(xcrun --sdk macosx --show-sdk-path)" \
+  -target arm64-apple-macos<ver> \
+  -minimum-access-level public -output-dir <cache>
+```
+
+**Critical:** resolve the SDK with `xcrun --sdk macosx --show-sdk-path` (bare `xcrun` can resolve to a broken Command Line Tools SDK). Extraction of AppKit takes ~30s and emits ~31MB, so results are cached under `~/Library/Caches/appkit-api/<sdk-version>/<module>/` and reused until the SDK version changes. Symbol structure: `names.title`, `kind.identifier`, `pathComponents` (qualified name), `declarationFragments` (→ signature), `availability`; `relationships[kind=memberOf]` maps members to their container type.
 
 **Verbs (JSON out):**
 - `appkit-api search <query>` — fuzzy across types/members
@@ -180,7 +188,7 @@ Concentrated in `appkit-packaging` + `references/ci-and-app-store.md` + `scripts
 
 ## 11. Phasing (one spec → a plan per phase)
 
-0. **Scaffold** — plugin repo, `marketplace.json` (+ codex), `plugin.json`, relocate the 8 existing skills into `plugins/appkit/skills/` (fix `builkd-and-run.sh` → `build-and-run.sh`), author `appkit-dev` agent.
+0. **Scaffold** — plugin repo, `marketplace.json` (+ codex), `plugin.json`, **copy** the 9 existing skills from `resources/` (gitignored reference inputs) into `plugins/appkit/skills/` verbatim (no content edits → no Iron-Law trip; polish comes later under TDD), fix `builkd-and-run.sh` → `build-and-run.sh`, author `appkit-dev` agent.
 1. **Tools** — `appkit-api` (first), then `appkit-search`; `build-tools.sh`; wire into `appkit-setup`. Swift Testing suites.
 2. **Flagship** — `appkit-design` wired to both tools, with `references/`.
 3. **Advanced/dual-use** — `appkit-private-apis` + `appkit-app-inspector`; the advisory cross-references.
