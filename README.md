@@ -8,7 +8,7 @@ Add this marketplace, then install the `appkit` plugin:
 - `/plugin install appkit`
 
 ## What's inside
-- **13 skills** under `plugins/appkit/skills/` — setup, dev-workflow, design, code-review, ui-testing, packaging (TestFlight + Mac App Store), migration, three macOS-26/27 modernization skills, private-APIs, app-inspector, session-report.
+- **9 skills today** under `plugins/appkit/skills/` — setup, dev-workflow, code-review, ui-testing, packaging (TestFlight + Mac App Store), migration, and three macOS-26/27 modernization skills (launch-continuity, modern-input, liquid-glass-concentricity). **Planned:** design, private-APIs, app-inspector, session-report.
 - **`appkit-dev` agent** — builds AppKit apps end-to-end.
 - **Native tools** in `src/tools/` — `appkit-api` (SDK API + availability validator) and `appkit-search` (AppKit/HIG pattern search). Build them with `scripts/build-tools.sh`.
 
