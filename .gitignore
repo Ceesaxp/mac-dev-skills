@@ -28,6 +28,7 @@ generated-headers/
 # Built native tools land in skill dirs via build-tools.sh; don't commit binaries
 plugins/appkit/skills/**/appkit-api
 plugins/appkit/skills/**/appkit-search
+plugins/appkit/skills/**/*.bundle
 
 # Python
 __pycache__/
