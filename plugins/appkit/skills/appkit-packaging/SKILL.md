@@ -13,6 +13,16 @@ macOS has a few distinct release pipelines — pick first:
 
 TestFlight and the Mac App Store share the same build, certs, and upload step — TestFlight is the beta stage of that one pipeline, not a separate signing path. This is the macOS analog of WinUI's MSIX-signing vs. Microsoft-Store split.
 
+### Private APIs & distribution (advisory)
+
+If your app uses private APIs, method swizzling, or anything learned by runtime-inspecting other apps (`appkit-private-apis`, `appkit-app-inspector`), the pipeline choice above is also a **policy** choice — surface it, don't gate on it:
+
+- **App Store review may reject private-API usage** — Apple judges **case-by-case**, there's no public allow-list, and not every use is auto-rejected. Hiding a private class name from the static scanner (no string literals, `object_getIvar` over KVC) defeats *static* analysis only; it does **not** make runtime use policy-safe.
+- **Developer ID + notarization is the escape hatch.** If review rejects it — or to avoid the question — ship **outside** the store (web / Sparkle / direct download), the Developer-ID flow that is the bulk of this skill. Private APIs are allowed there; you own the risk that an OS update breaks them.
+- **The inspection tooling never ships regardless.** flexscope's injected dylib (`appkit-app-inspector`) is a dev-box-only tool; only *knowledge* (a font, a constraint) crosses into the product, never the tool or any injection step.
+
+The suite never blocks you from shipping these — it tells you the trade-off so you pick the right pipeline. (Reciprocal advisories live in `appkit-private-apis` and `appkit-app-inspector`.)
+
 ### Quick Reference (Developer ID)
 
 | Task | Command |
