@@ -23,8 +23,10 @@ build_tool() {
 }
 
 build_tool "appkit-api" "plugins/appkit/skills/appkit-design"
-# appkit-search is added by a later plan.
+build_tool "appkit-search" "plugins/appkit/skills/appkit-design"
 
 echo "Done. Tools in $BIN_DIR (and copied into skill dirs)."
 "$BIN_DIR/appkit-api" --help >/dev/null || { echo "ERROR: appkit-api smoke test failed (missing/unsigned/wrong-arch binary?)" >&2; exit 1; }
 echo "appkit-api: smoke OK"
+"$BIN_DIR/appkit-search" --help >/dev/null || { echo "ERROR: appkit-search smoke test failed (missing/unsigned/wrong-arch binary?)" >&2; exit 1; }
+echo "appkit-search: smoke OK"

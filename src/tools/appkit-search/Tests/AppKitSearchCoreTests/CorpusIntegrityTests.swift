@@ -11,6 +11,11 @@ private func loadedCorpus() throws -> Corpus { try Corpus.load() }
     #expect(!corpus.patterns.isEmpty)
 }
 
+@Test func corpusContainsFullPhase1bTaxonomy() throws {
+    let corpus = try loadedCorpus()
+    #expect(corpus.patterns.count == 69)
+}
+
 @Test func idsAreUniqueKebabCase() throws {
     let corpus = try loadedCorpus()
     var seen = Set<String>()
