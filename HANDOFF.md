@@ -21,7 +21,16 @@ Building `mac-dev-skills` — a Claude Code plugin suite for modern (macOS 26/27
   - `appkit-dev` agent un-hedged: loads `appkit-design` by default.
   - Reusable audit harness committed at `scripts/wf-appkit-design-audit.js` (generalize for Phase 5).
 
-**Next:** Phase 3 (`appkit-private-apis` + `appkit-app-inspector` + the advisory cross-references).
+- **Phase 3** ✅ shipped (merged to main) — the two dual-use skills + the §7 advisory cross-references.
+  - `appkit-private-apis` (SKILL.md + 4 refs): discover → declare (category / bridging / `@objc` protocol / `dlsym`) → call → swizzle (IMP-capture + restoration + idempotent + when-not-to). PrivateHeaderKit for discovery — **static dump, no SIP needed**. Every ObjC-runtime symbol SDK-verified.
+  - `appkit-app-inspector` (SKILL.md + 4 refs): drive **flexscope** (the user's separate repo at `/Users/orion/Developer/Projects/flexscope`, spec-complete/unbuilt) against its **frozen CLI contract** — doctor gate (6 checks → exit 6) → filter→drill (never full-dump) → translate to an AppKit recipe. **flexscope = runtime injection, dev-box only (SIP+AMFI+LV off).** Authored against the frozen spec; unspecified flag defaults left as "see --help".
+  - `appkit-packaging` carries the reciprocal **distribution advisory** (review is case-by-case; Developer ID + notarization is the escape hatch; scanner-evasion ≠ safety; tooling never ships, only knowledge crosses).
+  - writing-skills loop for both: RED (caveat/dual-use/restoration gaps) → GREEN → adversarial audit (private-apis 5/5 clean; fixed 4 flexscope spec-accuracy bugs in app-inspector) → GREEN-verify (4/4 scenarios, 0 residual, 0 evasions).
+  - Audit harness committed at `scripts/wf-appkit-phase3-audit.js`.
+
+**Next:** Phase 4 (elevate `appkit-packaging` — TestFlight + MAS scripts; author `appkit-session-report`).
+
+**⚠️ Phase 4 carry:** `appkit-packaging/SKILL.md` references a bundled `notarize.sh` (lines ~42/163/198) that **does not exist yet** — Phase 4 adds the `scripts/` (`notarize.sh`, TestFlight, MAS). **Phase 5 carry:** update `appkit-setup` to build flexscope **if present** at its path and check for PrivateHeaderKit (the `appkit-app-inspector` skill explains how to obtain/build flexscope in the meantime).
 
 **⚠️ Carry into Phase 5:** the corpus integrity tests do **not** compile the `swiftCode`. The audit only spot-checked the 2 corner patterns it touched — a **suite-wide compile/symbol audit of all 69 patterns' `swiftCode`** is warranted (generalize `scripts/wf-appkit-design-audit.js`). Also note: `appkit-api check` resolves protocol-declared members under their **protocol owner** (e.g. `setAccessibilityIdentifier` under `NSAccessibilityProtocol`, not `NSView`) — a not-found on `Type.member` is not automatically a hallucination.
 

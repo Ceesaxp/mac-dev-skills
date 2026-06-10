@@ -32,8 +32,8 @@ appkit-launch-continuity           ✅ SKILL.md (WWDC-26 draft — needs polish 
 appkit-modern-input                ✅ SKILL.md (WWDC-26 draft — needs polish pass)
 appkit-liquid-glass-concentricity  ✅ SKILL.md (WWDC-26 draft — has a "TBD interactive-glass API" note appkit-api can now RESOLVE)
 appkit-design                      ✅ SHIPPED (Phase 2, merged main 7a3dfd4) — SKILL.md + 9 references, tool-wired, GREEN-verified
-appkit-private-apis                ⛔ does not exist                                                              → Phase 3
-appkit-app-inspector               ⛔ does not exist                                                              → Phase 3
+appkit-private-apis                ✅ SHIPPED (Phase 3) — SKILL.md + 4 refs; PrivateHeaderKit + declare/call + swizzling
+appkit-app-inspector               ✅ SHIPPED (Phase 3) — SKILL.md + 4 refs; drives flexscope's frozen CLI contract
 appkit-session-report              ⛔ NO SKILL.md yet — dir holds analyze-session.py payload only                → Phase 4
 ```
 
@@ -82,7 +82,9 @@ appkit-session-report              ⛔ NO SKILL.md yet — dir holds analyze-ses
 
 ---
 
-## Phase 3 — `appkit-private-apis` + `appkit-app-inspector` (advanced / dual-use)
+## Phase 3 — `appkit-private-apis` + `appkit-app-inspector` (advanced / dual-use) ✅ SHIPPED
+
+> **Done (merged to `main`).** Both skills authored under the full writing-skills loop (RED → GREEN → adversarial audit → GREEN-verify, 0 evasions). Ground truth verified first: PrivateHeaderKit's real commands (`privateheaderkit-dump --platform macos`, static, **no SIP**) and flexscope's frozen CLI contract (13 verbs, 6-check doctor gate, exit-code channel). The §7 advisory is triangulated across `appkit-private-apis` ↔ `appkit-app-inspector` ↔ `appkit-packaging`. Audit fixed 4 flexscope spec-accuracy bugs in `appkit-app-inspector` (material is a node field; fonts/constraints single-object; arm64e/AMFI exit 6; truncated on depth-cut). **Carries:** `notarize.sh` (Phase 4), `appkit-setup` flexscope/PHK hooks (Phase 5). The plan below is retained for reference.
 
 Two NEW skills + the load-bearing **advisory stance** (spec §7). Both are Developer-ID/research-oriented; neither is auto-rejected by the App Store but both *may* be — **inform, never gate.**
 
