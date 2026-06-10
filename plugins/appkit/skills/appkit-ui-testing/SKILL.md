@@ -162,7 +162,7 @@ If the checklist fails, it's a bug — fix before declaring done. Window too sma
 If tests fail:
 1. Read the failure detail from the result bundle.
 2. Batch-fix all issues in one pass.
-3. Rebuild with `./BuildAndRun.sh --skip-run` (catches compile breaks from the fix).
+3. Rebuild with `./build-and-run.sh --skip-run` (catches compile breaks from the fix).
 4. Rerun the `xcodebuild test` command above.
 
 **Maximum 2 fix-and-rerun cycles.** If the same tests keep failing after 2 cycles, report them as known issues and move on — don't loop.
@@ -180,7 +180,7 @@ If tests fail:
 | `NSComboBox` | `String` | `app.comboBoxes["Id"].value as? String` |
 | `NSSwitch` / checkbox | `Int` 1/0 | `app.switches["Id"].value as? Int` |
 | `NSSlider` | `Double` | `app.sliders["Id"].value as? Double` |
-| `NSStaticText` (label) | use `.label` | `app.staticTexts["Id"].label` |
+| `NSTextField (label)` | use `.label` | `app.staticTexts["Id"].label` |
 
 Common commands: `el.click()`, `el.rightClick()`, `el.doubleClick()`, `el.typeText("…")`, `el.clearAndType` (write a helper: select-all + delete + type), `el.waitForExistence(timeout:)`, `el.coordinate(withNormalizedOffset:).click()` for precise hits, and `app.typeKey("s", modifierFlags: .command)` for keyboard shortcuts.
 
@@ -203,7 +203,7 @@ Use Accessibility Inspector on an open panel to find its control identifiers (th
 
 ```swift
 // Context menu
-app.outlines["List"].rows.firstMatch.rightClick()
+app.outlines["List"].outlineRows.firstMatch.rightClick()
 app.menuItems["Copy"].click()
 XCTAssertEqual(app.staticTexts["Status"].value as? String, "Copied")
 

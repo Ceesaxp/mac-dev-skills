@@ -37,14 +37,15 @@ Create a pasteboard item, set its data, return it — AppKit drives the drag:
 func tableView(_ tableView: NSTableView,
                pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
     let pasteboardItem = NSPasteboardItem()
-    pasteboardItem.setString(/* ... */, forType: .string)
+    let value = items[row].id   // the String you want to drag
+    pasteboardItem.setString(value, forType: .string)
     return pasteboardItem
 }
 ```
 
 ## Control events (familiar from UIKit, now in AppKit)
 
-For reacting to user-driven tracking state changes on **standard controls** (buttons, sliders), register a target/action for a control event instead of writing tracking logic. **No subclassing required.** (Most control events have been available since OS 10.11 — surfacing them is the modern path.)
+For reacting to user-driven tracking state changes on **standard controls** (buttons, sliders), register a target/action for a control event instead of writing tracking logic. **No subclassing required.** (Most control events have been available since macOS 11 — surfacing them is the modern path.)
 
 ```swift
 let button = NSButton()

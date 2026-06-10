@@ -57,7 +57,7 @@ Three steps: **opt in → encode UI state → decode to restore windows and UI.*
 ```swift
 override func encodeRestorableState(with coder: NSCoder) {
     super.encodeRestorableState(with: coder)   // always call super
-    coder.encode(selectedProduct?.identifier.uuid,
+    coder.encode(selectedProduct?.identifier.uuid.uuidString,
                  forKey: RestorationKeys.productIdentifier)
 }
 ```

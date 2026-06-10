@@ -1,6 +1,6 @@
 ---
 name: appkit-dev-workflow
-description: "Build and run workflow for native macOS AppKit apps — project creation with Tuist, the BuildAndRun.sh helper, xcodebuild, launching the .app, reading stdout/crash logs, error diagnosis, and prerequisites. Use when building, running, or fixing build errors in an AppKit / Swift / Cocoa project."
+description: "Build and run workflow for native macOS AppKit apps — project creation with Tuist, the build-and-run.sh helper, xcodebuild, launching the .app, reading stdout/crash logs, error diagnosis, and prerequisites. Use when building, running, or fixing build errors in an AppKit / Swift / Cocoa project."
 ---
 
 ### Create or Open a Project
@@ -16,12 +16,14 @@ Canonical no-storyboard entry point (`Sources/main.swift`) — robust, avoids ni
 ```swift
 import AppKit
 
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.delegate = delegate
-app.setActivationPolicy(.regular)          // shows in Dock + gets a menu bar
-app.activate(ignoringOtherApps: true)
-app.run()
+MainActor.assumeIsolated {
+    let app = NSApplication.shared
+    let delegate = AppDelegate()
+    app.delegate = delegate
+    app.setActivationPolicy(.regular)      // shows in Dock + gets a menu bar
+    app.activate()                         // NSApp.activate (macOS 14+); foregrounds the app
+    app.run()
+}
 ```
 ```swift
 // Sources/AppDelegate.swift
@@ -63,13 +65,13 @@ let project = Project(
     ]
 )
 ```
-For a larger graph, prefer a dedicated `Tuist/Package.swift` that lists the dependencies, then run `tuist install` and reference each with `.external(name: "Sparkle")` in the target. Pin to a major (`.upToNextMajor(from:)`) rather than an exact version so you pick up compatible fixes. Run `tuist generate` after editing `Project.swift` (`BuildAndRun.sh` does this for you, and runs `tuist install` first when a `Tuist/Package.swift` is present).
+For a larger graph, prefer a dedicated `Tuist/Package.swift` that lists the dependencies, then run `tuist install` and reference each with `.external(name: "Sparkle")` in the target. Pin to a major (`.upToNextMajor(from:)`) rather than an exact version so you pick up compatible fixes. Run `tuist generate` after editing `Project.swift` (`build-and-run.sh` does this for you, and runs `tuist install` first when a `Tuist/Package.swift` is present).
 
 ### Build & Run
 
-Use the `BuildAndRun.sh` script included with this skill — it does the whole loop:
+Use the `build-and-run.sh` script included with this skill — it does the whole loop:
 ```bash
-./BuildAndRun.sh
+./build-and-run.sh
 ```
 
 What it does automatically:
@@ -82,7 +84,7 @@ What it does automatically:
 
 **Reading output.** A normal `open MyApp.app` returns immediately and detaches, so you won't see the app's `stdout`. To watch logs and crashes (the analog of "debug output"):
 ```bash
-./BuildAndRun.sh --logs        # runs MyApp.app/Contents/MacOS/MyApp in the foreground, streaming stdout/stderr
+./build-and-run.sh --logs        # runs MyApp.app/Contents/MacOS/MyApp in the foreground, streaming stdout/stderr
 ```
 Run this in the **background** (Bash tool `run_in_background: true`) so it doesn't block your turn while the app is open; then read the streamed output. Alternatively, for already-running apps, tail the unified log:
 ```bash
@@ -91,14 +93,14 @@ log stream --level debug --predicate 'process == "MyApp"'
 
 **Options:**
 ```bash
-./BuildAndRun.sh                              # generate (if needed), build, launch with open
-./BuildAndRun.sh --scheme MyApp              # explicit scheme
-./BuildAndRun.sh --logs                       # build, then run the inner binary streaming stdout (use background)
-./BuildAndRun.sh --skip-run                   # build only (safe to run in foreground)
-./BuildAndRun.sh --configuration Release      # override Debug
+./build-and-run.sh                              # generate (if needed), build, launch with open
+./build-and-run.sh --scheme MyApp              # explicit scheme
+./build-and-run.sh --logs                       # build, then run the inner binary streaming stdout (use background)
+./build-and-run.sh --skip-run                   # build only (safe to run in foreground)
+./build-and-run.sh --configuration Release      # override Debug
 ```
 
-**If the build fails:** read ALL errors (Swift emits the full set in one pass — no need to guess), batch-fix them, then re-run `BuildAndRun.sh`.
+**If the build fails:** read ALL errors (Swift emits the full set in one pass — no need to guess), batch-fix them, then re-run `build-and-run.sh`.
 
 **If the app crashes on launch:** run with `--logs` and read the stderr/exception, or check the latest crash report:
 ```bash
@@ -126,7 +128,7 @@ ls -t ~/Library/Logs/DiagnosticReports/MyApp-*.ips | head -1 | xargs cat
 | Requirement | Minimum | Recommended | Install |
 |---|---|---|---|
 | macOS | matches your deployment target | macOS 26 Tahoe (to build for Tahoe) | — |
-| Xcode | 26 (for the macOS 26 SDK) | latest 26.x (Swift 6.3) | Mac App Store, or `xcodes install` |
+| Xcode | 26 (for the macOS 26 SDK) | latest 26.x (Swift 6.3+) | Mac App Store, or `xcodes install` |
 | Command Line Tools / license | accepted | accepted | `sudo xcodebuild -license accept` |
 | Tuist | 4.x | latest | `brew install tuist` |
 | Homebrew | — | latest | <https://brew.sh> |
@@ -138,9 +140,9 @@ If any of these are missing when you try to use them — `xcodebuild`/`tuist` no
 - ❌ NEVER ship a bare `swift build` executable as a GUI app — AppKit apps need a `.app` bundle with `Info.plist` (use Tuist + `xcodebuild`).
 - ❌ NEVER set `LSUIElement`/agent activation just to silence a "no window" bug — fix the window controller lifetime.
 - ❌ NEVER block the main thread (`.sync` to the main queue, semaphore waits on main) — it deadlocks the UI.
-- ❌ NEVER hardcode an absolute DerivedData path from another machine — let `BuildAndRun.sh` resolve `BUILT_PRODUCTS_DIR`.
+- ❌ NEVER hardcode an absolute DerivedData path from another machine — let `build-and-run.sh` resolve `BUILT_PRODUCTS_DIR`.
 
 ### References
 
-- `BuildAndRun.sh` — included with this skill; generates, builds, and launches automatically.
+- `build-and-run.sh` — included with this skill; generates, builds, and launches automatically.
 - `templates/Project.swift` — a minimal Tuist manifest for a programmatic AppKit app + UI test target, targeting macOS 26.
