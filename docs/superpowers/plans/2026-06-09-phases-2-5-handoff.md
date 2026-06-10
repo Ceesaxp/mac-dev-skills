@@ -27,14 +27,14 @@ appkit-dev-workflow                ✅ SKILL.md (draft + build-and-run.sh + temp
 appkit-code-review                 ✅ SKILL.md (draft — needs polish pass)
 appkit-ui-testing                  ✅ SKILL.md (draft — needs polish pass)
 appkit-migration                   ✅ SKILL.md (draft — needs polish pass)
-appkit-packaging                   ✅ SKILL.md (draft) + references/ci-and-app-store.md  → ELEVATE in Phase 4
+appkit-packaging                   ✅ ELEVATED (Phase 4) — TestFlight + MAS store pipeline + 3 ship scripts (ASC API key)
 appkit-launch-continuity           ✅ SKILL.md (WWDC-26 draft — needs polish pass)
 appkit-modern-input                ✅ SKILL.md (WWDC-26 draft — needs polish pass)
 appkit-liquid-glass-concentricity  ✅ SKILL.md (WWDC-26 draft — has a "TBD interactive-glass API" note appkit-api can now RESOLVE)
 appkit-design                      ✅ SHIPPED (Phase 2, merged main 7a3dfd4) — SKILL.md + 9 references, tool-wired, GREEN-verified
 appkit-private-apis                ✅ SHIPPED (Phase 3) — SKILL.md + 4 refs; PrivateHeaderKit + declare/call + swizzling
 appkit-app-inspector               ✅ SHIPPED (Phase 3) — SKILL.md + 4 refs; drives flexscope's frozen CLI contract
-appkit-session-report              ⛔ NO SKILL.md yet — dir holds analyze-session.py payload only                → Phase 4
+appkit-session-report              ✅ SHIPPED (Phase 4) — SKILL.md wraps analyze-session.py (privacy-gated, user-invoked)
 ```
 
 **Important:** all 9 existing SKILL.md files were copied **verbatim** from `resources/` in Phase 0 and have **never been quality-edited**. They are drafts. Phase 5 is the polish pass; but if you touch any of them earlier, the writing-skills Iron Law applies (see §"Process rules" below).
@@ -108,7 +108,9 @@ Two NEW skills + the load-bearing **advisory stance** (spec §7). Both are Devel
 
 ---
 
-## Phase 4 — elevate `appkit-packaging` + author `appkit-session-report`
+## Phase 4 — elevate `appkit-packaging` + author `appkit-session-report` ✅ SHIPPED
+
+> **Done (merged to `main`).** Packaging tooling verified against the **Xcode 27 toolchain** (man pages / `--help`): the load-bearing fix was `method app-store`→`app-store-connect` (deprecated). Added the store-pipeline cert split, App Sandbox, the `altool` `.p8` CI trap, and 3 shellcheck-clean ship scripts (ASC API key, no passwords). `appkit-session-report` wraps `analyze-session.py` (verified running) with mandatory `--output` + unprompted privacy warning + summary-over-raw + a bug-filing guard. Both via the writing-skills loop (GREEN-verify 4/4, 0 evasions; loophole closed + re-verified). Phase-5 carries logged in the top-level `HANDOFF.md`. The plan below is retained for reference.
 
 ### Elevate `appkit-packaging` (it's a draft today)
 Concentrate the TestFlight + Mac App Store story here (spec §9):

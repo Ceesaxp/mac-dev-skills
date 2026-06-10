@@ -283,8 +283,9 @@ def parse_session(path: Path, is_subagent: bool = False, include_subagents: bool
 def _is_shell(t): return t["name"] == "shell"
 def _cmd(t): return (t["args"].get("command") or "") if _is_shell(t) else ""
 
-RE_BUILD = re.compile(r"\bxcodebuild\b|BuildAndRun\.sh|BuildAndRun\b|\btuist\b")
-RE_RUN   = re.compile(r"\bopen\s+.*\.app|BuildAndRun(?!.*--skip-run)|Contents/MacOS/")
+RE_HELPER = re.compile(r"build-and-run\.sh|build-and-run\b|BuildAndRun")
+RE_BUILD = re.compile(r"\bxcodebuild\b|build-and-run|BuildAndRun|\btuist\b|\bswift build\b")
+RE_RUN   = re.compile(r"\bopen\s+.*\.app|(?:build-and-run|BuildAndRun)(?!.*--skip-run)|Contents/MacOS/")
 RE_DIAG  = re.compile(r"xcresulttool|-showBuildSettings|DiagnosticReports|"
                       r"log stream|grep .*error|DerivedData|rm -rf .*build|codesign --verify|spctl")
 RE_SCAFFOLD = re.compile(r"tuist generate|tuist install|mkdir ")
@@ -361,16 +362,16 @@ def render(parsed: dict, include_subagents: bool) -> str:
     build_fix = sum(1 for t in all_turns if t["category"] == "build-fix")
     attempts = build_ok + build_fix
 
-    # BuildAndRun.sh vs raw xcodebuild
-    used_bar = any(_is_shell(t) and "BuildAndRun" in _cmd(t) for tn in all_turns for t in tn["tools"])
-    raw_xcb = any(_is_shell(t) and re.search(r"\bxcodebuild\b", _cmd(t)) and "BuildAndRun" not in _cmd(t)
+    # build-and-run.sh helper vs raw xcodebuild (tolerates the legacy BuildAndRun casing)
+    used_bar = any(_is_shell(t) and RE_HELPER.search(_cmd(t)) for tn in all_turns for t in tn["tools"])
+    raw_xcb = any(_is_shell(t) and re.search(r"\bxcodebuild\b", _cmd(t)) and not RE_HELPER.search(_cmd(t))
                   for tn in all_turns for t in tn["tools"])
     if used_bar and not raw_xcb:
-        build_status = "Used BuildAndRun.sh for all builds"
+        build_status = "Used build-and-run.sh for all builds"
     elif used_bar and raw_xcb:
-        build_status = "Mixed: raw xcodebuild and BuildAndRun.sh"
+        build_status = "Mixed: raw xcodebuild and build-and-run.sh"
     elif raw_xcb:
-        build_status = "NOT USED: raw xcodebuild only, never used BuildAndRun.sh"
+        build_status = "NOT USED: raw xcodebuild only, never used build-and-run.sh"
     else:
         build_status = "No build commands detected"
 
@@ -484,7 +485,7 @@ def render(parsed: dict, include_subagents: bool) -> str:
 
     md.append("## Build Analysis\n")
     md.append(f"- **Attempts:** {attempts} ({build_ok} success, {build_fix} failed)")
-    md.append(f"- **BuildAndRun.sh:** {build_status}")
+    md.append(f"- **build-and-run.sh:** {build_status}")
     md.append("")
     if build_errors:
         md.append("**Build errors encountered:**\n")

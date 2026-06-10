@@ -38,3 +38,6 @@ __pycache__/
 *.log
 
 # NOTE: docs/ is intentionally tracked (design specs live in docs/superpowers/specs/)
+
+# Session reports are unredacted transcripts — never commit them
+session-report*.md

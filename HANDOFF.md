@@ -28,9 +28,18 @@ Building `mac-dev-skills` — a Claude Code plugin suite for modern (macOS 26/27
   - writing-skills loop for both: RED (caveat/dual-use/restoration gaps) → GREEN → adversarial audit (private-apis 5/5 clean; fixed 4 flexscope spec-accuracy bugs in app-inspector) → GREEN-verify (4/4 scenarios, 0 residual, 0 evasions).
   - Audit harness committed at `scripts/wf-appkit-phase3-audit.js`.
 
-**Next:** Phase 4 (elevate `appkit-packaging` — TestFlight + MAS scripts; author `appkit-session-report`).
+- **Phase 4** ✅ shipped (merged to main) — elevated `appkit-packaging` + authored `appkit-session-report`.
+  - `appkit-packaging`: a store-pipeline section verified against the **Xcode 27 toolchain** — the Developer-ID-vs-App-Store cert split (Apple Distribution + **Mac Installer Distribution**, App Sandbox mandatory, hardened-runtime is Dev-ID-only), `method=app-store-connect` (**`app-store` is deprecated** — the load-bearing fix), `notarytool` is **not** a store uploader, the `altool` `.p8` file-location CI trap, ASC API key (no passwords). Fixed the dangling `notarize.sh` reference. `references/ci-and-app-store.md` corrected (4× `app-store`→`app-store-connect`). **3 ship scripts** in `scripts/` (shellcheck-clean, ASC API key): `notarize.sh`, `app-store-upload.sh`, `mas-export-submit.sh`.
+  - `appkit-session-report` (NEW, `disable-model-invocation`): wraps `analyze-session.py` — always `--output`, unprompted privacy warning, summary-over-raw, bug-filing guard. Analyzer **verified running end-to-end**; fixed its build-detection (`BuildAndRun`→`build-and-run.sh` + `swift build`). `session-report*.md` is gitignored (unredacted transcripts).
+  - writing-skills loop both: RED → GREEN → GREEN-verify (4/4 disciplines, 0 evasions; the session-share over-interpretation loophole closed + re-verified). Verified packaging tooling against `xcodebuild`/`notarytool`/`altool` `--help`.
 
-**⚠️ Phase 4 carry:** `appkit-packaging/SKILL.md` references a bundled `notarize.sh` (lines ~42/163/198) that **does not exist yet** — Phase 4 adds the `scripts/` (`notarize.sh`, TestFlight, MAS). **Phase 5 carry:** update `appkit-setup` to build flexscope **if present** at its path and check for PrivateHeaderKit (the `appkit-app-inspector` skill explains how to obtain/build flexscope in the meantime).
+**Next:** Phase 5 (suite-wide polish — see §"Phase 5" in `docs/superpowers/plans/2026-06-09-phases-2-5-handoff.md`).
+
+**⚠️ Phase 5 carries (accumulated):**
+- **`appkit-dev-workflow` naming drift:** its SKILL.md prose says `BuildAndRun.sh` (lines ~3/66/70) but the actual script is `build-and-run.sh` — agents typing `BuildAndRun.sh` hit "command not found." Fix the prose in the polish pass.
+- **`analyze-session.py` heuristics:** `RE_BUILD` matches `xcodebuild`/`tuist` even inside `--help`/`-version` probes (inflates build counts), and Turn Detail renders subagent turns as bare `Turn N` colliding with parent turns (no origin label). Real but minor; the session-report SKILL.md guard mitigates the user-facing risk.
+- **`appkit-setup`:** build flexscope **if present** at its path + check for PrivateHeaderKit (the `appkit-app-inspector` skill explains how to obtain/build flexscope meanwhile).
+- **`appkit-search` corpus compile-audit:** the integrity tests don't compile `swiftCode`; do a suite-wide pass (generalize `scripts/wf-appkit-design-audit.js`).
 
 **⚠️ Carry into Phase 5:** the corpus integrity tests do **not** compile the `swiftCode`. The audit only spot-checked the 2 corner patterns it touched — a **suite-wide compile/symbol audit of all 69 patterns' `swiftCode`** is warranted (generalize `scripts/wf-appkit-design-audit.js`). Also note: `appkit-api check` resolves protocol-declared members under their **protocol owner** (e.g. `setAccessibilityIdentifier` under `NSAccessibilityProtocol`, not `NSView`) — a not-found on `Type.member` is not automatically a hallucination.
 
