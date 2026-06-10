@@ -23,7 +23,7 @@
       "nsviewcornerradius"
     ],
     "minMacOS": "27.0",
-    "swiftCode": "import AppKit\n\n/// A card presenting content inside a Liquid Glass container. The header strip at\n/// the top uses concentric corners to track the outer card radius automatically.\n@MainActor final class CardView: NSView {\n\n    private let glassContainer: NSGlassEffectView\n    private let headerStrip: NSView\n    private let contentView: NSView\n\n    init(content: NSView, header: NSView) {\n        glassContainer = NSGlassEffectView()\n        headerStrip = NSView()\n        contentView = content\n        super.init(frame: .zero)\n\n        // -- outer container: explicit rounded corners on the glass card\n        glassContainer.translatesAutoresizingMaskIntoConstraints = false\n        glassContainer.cornerRadius = 24\n        addSubview(glassContainer)\n\n        // -- inner header: concentrically tracks the outer radius\n        headerStrip.translatesAutoresizingMaskIntoConstraints = false\n        headerStrip.wantsLayer = true\n        headerStrip.cornerConfiguration = NSViewCornerConfiguration.uniformCorners(\n            radius: NSViewCornerRadius.containerConcentric\n        )\n        headerStrip.addSubview(header)\n        header.translatesAutoresizingMaskIntoConstraints = false\n        glassContainer.addSubview(headerStrip)\n\n        // -- body content\n        contentView.translatesAutoresizingMaskIntoConstraints = false\n        glassContainer.addSubview(contentView)\n\n        NSLayoutConstraint.activate([\n            glassContainer.leadingAnchor.constraint(equalTo: leadingAnchor),\n            glassContainer.trailingAnchor.constraint(equalTo: trailingAnchor),\n            glassContainer.topAnchor.constraint(equalTo: topAnchor),\n            glassContainer.bottomAnchor.constraint(equalTo: bottomAnchor),\n\n            headerStrip.leadingAnchor.constraint(equalTo: glassContainer.leadingAnchor),\n            headerStrip.trailingAnchor.constraint(equalTo: glassContainer.trailingAnchor),\n            headerStrip.topAnchor.constraint(equalTo: glassContainer.topAnchor),\n            headerStrip.heightAnchor.constraint(equalToConstant: 52),\n\n            header.leadingAnchor.constraint(equalTo: headerStrip.leadingAnchor, constant: 16),\n            header.centerYAnchor.constraint(equalTo: headerStrip.centerYAnchor),\n\n            contentView.leadingAnchor.constraint(equalTo: glassContainer.leadingAnchor, constant: 16),\n            contentView.trailingAnchor.constraint(equalTo: glassContainer.trailingAnchor, constant: -16),\n            contentView.topAnchor.constraint(equalTo: headerStrip.bottomAnchor, constant: 12),\n            contentView.bottomAnchor.constraint(equalTo: glassContainer.bottomAnchor, constant: -16)\n        ])\n    }\n\n    required init?(coder: NSCoder) {\n        fatalError(\"init(coder:) has not been implemented\")\n    }\n}\n\n/// A view that adapts its border shape when effective corner radii change — useful\n/// when a containerConcentric view needs to redraw a stroke or shadow mask.\n@MainActor final class ConcentricBadge: NSView {\n\n    override init(frame: NSRect) {\n        super.init(frame: frame)\n        wantsLayer = true\n        cornerConfiguration = NSViewCornerConfiguration.uniformCorners(\n            radius: NSViewCornerRadius.containerConcentric\n        )\n    }\n\n    required init?(coder: NSCoder) {\n        fatalError(\"init(coder:) has not been implemented\")\n    }\n\n    /// Called whenever an ancestor's corner radius changes and this view's\n    /// effective radii are recomputed.\n    override func viewDidChangeEffectiveCornerRadii() {\n        super.viewDidChangeEffectiveCornerRadii()\n        // Re-draw a stroke, shadow path, or maskedCorners that depends on\n        // the now-up-to-date effectiveCornerRadii.\n        // let radii = effectiveCornerRadii\n        // layer?.shadowPath = CGPath(roundedRect: bounds, ...)\n        needsDisplay = true\n    }\n}",
+    "swiftCode": "import AppKit\n\n/// A reusable view whose corners stay optically concentric with the rounded\n/// ancestor that contains it. `cornerConfiguration` is READ-ONLY on NSView, so a\n/// custom view declares its corner style by OVERRIDING the getter — never by\n/// assignment. AppKit reads the getter and recomputes `effectiveCornerRadii`.\n@MainActor final class ConcentricView: NSView {\n    override var cornerConfiguration: NSViewCornerConfiguration? {\n        .uniformCorners(radius: .containerConcentric)\n    }\n}\n\n/// A card presenting content inside a Liquid Glass container. The header strip at\n/// the top uses concentric corners to track the outer card radius automatically.\n@MainActor final class CardView: NSView {\n\n    private let glassContainer = NSGlassEffectView()\n    private let headerStrip = ConcentricView()   // concentric via overridden getter\n    private let contentView: NSView\n\n    init(content: NSView, header: NSView) {\n        contentView = content\n        super.init(frame: .zero)\n\n        // -- outer container: explicit rounded corners on the glass card\n        glassContainer.translatesAutoresizingMaskIntoConstraints = false\n        glassContainer.cornerRadius = 24\n        addSubview(glassContainer)\n\n        // -- inner header: concentrically tracks the outer radius (no manual math)\n        headerStrip.translatesAutoresizingMaskIntoConstraints = false\n        headerStrip.wantsLayer = true\n        headerStrip.addSubview(header)\n        header.translatesAutoresizingMaskIntoConstraints = false\n        glassContainer.addSubview(headerStrip)\n\n        // -- body content\n        contentView.translatesAutoresizingMaskIntoConstraints = false\n        glassContainer.addSubview(contentView)\n\n        NSLayoutConstraint.activate([\n            glassContainer.leadingAnchor.constraint(equalTo: leadingAnchor),\n            glassContainer.trailingAnchor.constraint(equalTo: trailingAnchor),\n            glassContainer.topAnchor.constraint(equalTo: topAnchor),\n            glassContainer.bottomAnchor.constraint(equalTo: bottomAnchor),\n\n            headerStrip.leadingAnchor.constraint(equalTo: glassContainer.leadingAnchor),\n            headerStrip.trailingAnchor.constraint(equalTo: glassContainer.trailingAnchor),\n            headerStrip.topAnchor.constraint(equalTo: glassContainer.topAnchor),\n            headerStrip.heightAnchor.constraint(equalToConstant: 52),\n\n            header.leadingAnchor.constraint(equalTo: headerStrip.leadingAnchor, constant: 16),\n            header.centerYAnchor.constraint(equalTo: headerStrip.centerYAnchor),\n\n            contentView.leadingAnchor.constraint(equalTo: glassContainer.leadingAnchor, constant: 16),\n            contentView.trailingAnchor.constraint(equalTo: glassContainer.trailingAnchor, constant: -16),\n            contentView.topAnchor.constraint(equalTo: headerStrip.bottomAnchor, constant: 12),\n            contentView.bottomAnchor.constraint(equalTo: glassContainer.bottomAnchor, constant: -16)\n        ])\n    }\n\n    required init?(coder: NSCoder) {\n        fatalError(\"init(coder:) has not been implemented\")\n    }\n}",
     "imports": [
       "AppKit"
     ],
@@ -65,7 +65,7 @@
       "nsview"
     ],
     "minMacOS": "27.0",
-    "swiftCode": "import AppKit\n\n/// React to the *resolved* corner radii of a view whose corners are configured\n/// via cornerConfiguration (e.g. .containerConcentric). effectiveCornerRadii is\n/// read-only and recomputed by AppKit; override viewDidChangeEffectiveCornerRadii()\n/// to update anything that must match the final geometry (shadow path, stroke).\n@MainActor\nfinal class ConcentricBadgeView: NSView {\n    override init(frame frameRect: NSRect) {\n        super.init(frame: frameRect)\n        wantsLayer = true\n        // Track the container's curvature automatically.\n        cornerConfiguration = .uniformCorners(radius: .containerConcentric)\n    }\n\n    required init?(coder: NSCoder) { fatalError(\"init(coder:) has not been implemented\") }\n\n    override func viewDidChangeEffectiveCornerRadii() {\n        super.viewDidChangeEffectiveCornerRadii()\n        // effectiveCornerRadii now holds the resolved per-corner radii.\n        let radii = effectiveCornerRadii\n        layer?.cornerRadius = radii.topLeft\n        needsDisplay = true\n    }\n\n    /// Force AppKit to recompute effectiveCornerRadii after a manual change that\n    /// affects resolution (rare — most changes invalidate automatically).\n    func refreshCorners() {\n        invalidateCornerConfiguration()\n    }\n}\n",
+    "swiftCode": "import AppKit\n\n/// React to the *resolved* corner radii of a view whose corners are configured\n/// via cornerConfiguration (e.g. .containerConcentric). Both `cornerConfiguration`\n/// and `effectiveCornerRadii` are READ-ONLY: declare the configuration by\n/// OVERRIDING the cornerConfiguration getter (never assign it), read the optional\n/// `effectiveCornerRadii`, and override viewDidChangeEffectiveCornerRadii() to\n/// update geometry-dependent drawing (shadow path, stroke, mask).\n@MainActor\nfinal class ConcentricBadgeView: NSView {\n    // Declare the corner style by overriding the read-only getter.\n    override var cornerConfiguration: NSViewCornerConfiguration? {\n        .uniformCorners(radius: .containerConcentric)\n    }\n\n    override init(frame frameRect: NSRect) {\n        super.init(frame: frameRect)\n        wantsLayer = true\n    }\n\n    required init?(coder: NSCoder) { fatalError(\"init(coder:) has not been implemented\") }\n\n    override func viewDidChangeEffectiveCornerRadii() {\n        super.viewDidChangeEffectiveCornerRadii()\n        // effectiveCornerRadii is optional (nil when cornerConfiguration is nil).\n        if let radii = effectiveCornerRadii {\n            layer?.cornerRadius = radii.topLeft\n        }\n        needsDisplay = true\n    }\n\n    /// Force AppKit to recompute effectiveCornerRadii after a manual change that\n    /// affects resolution (rare — most changes invalidate automatically).\n    func refreshCorners() {\n        invalidateCornerConfiguration()\n    }\n}",
     "imports": [
       "AppKit"
     ],
@@ -903,7 +903,7 @@
     "whenToUse": "Use a view-based NSTableView for homogeneous, scrollable lists of records where each row is a lightweight cell; the HIG recommends tables for structured data the user scans or sorts. For richer grid layouts prefer NSCollectionView.",
     "higReference": {
       "section": "Tables",
-      "url": "https://developer.apple.com/design/human-interface-guidelines/tables"
+      "url": "https://developer.apple.com/design/human-interface-guidelines/lists-and-tables"
     },
     "minMacOS": "",
     "replaces": null
@@ -948,7 +948,7 @@
     "whenToUse": "Use this when users need to scan, compare, select, or reorganize structured records. The HIG Tables guidance favors standard table, outline, and collection controls instead of custom row containers.",
     "higReference": {
       "section": "Tables",
-      "url": "https://developer.apple.com/design/human-interface-guidelines/tables"
+      "url": "https://developer.apple.com/design/human-interface-guidelines/lists-and-tables"
     }
   },
   {
@@ -992,7 +992,7 @@
     "whenToUse": "Use this when users need to scan, compare, select, or reorganize structured records. The HIG Tables guidance favors standard table, outline, and collection controls instead of custom row containers.",
     "higReference": {
       "section": "Tables",
-      "url": "https://developer.apple.com/design/human-interface-guidelines/tables"
+      "url": "https://developer.apple.com/design/human-interface-guidelines/lists-and-tables"
     }
   },
   {
@@ -1080,7 +1080,7 @@
     "whenToUse": "Use this when users need to scan, compare, select, or reorganize structured records. The HIG Tables guidance favors standard table, outline, and collection controls instead of custom row containers.",
     "higReference": {
       "section": "Tables",
-      "url": "https://developer.apple.com/design/human-interface-guidelines/tables"
+      "url": "https://developer.apple.com/design/human-interface-guidelines/lists-and-tables"
     }
   },
   {
@@ -1125,7 +1125,7 @@
     "whenToUse": "Use this when users need to scan, compare, select, or reorganize structured records. The HIG Tables guidance favors standard table, outline, and collection controls instead of custom row containers.",
     "higReference": {
       "section": "Tables",
-      "url": "https://developer.apple.com/design/human-interface-guidelines/tables"
+      "url": "https://developer.apple.com/design/human-interface-guidelines/lists-and-tables"
     }
   },
   {
@@ -1170,7 +1170,7 @@
     "whenToUse": "Use this when users need to scan, compare, select, or reorganize structured records. The HIG Tables guidance favors standard table, outline, and collection controls instead of custom row containers.",
     "higReference": {
       "section": "Tables",
-      "url": "https://developer.apple.com/design/human-interface-guidelines/tables"
+      "url": "https://developer.apple.com/design/human-interface-guidelines/lists-and-tables"
     }
   },
   {
