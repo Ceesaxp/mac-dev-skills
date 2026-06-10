@@ -1,6 +1,6 @@
 ---
 name: appkit-session-report
-description: Use when the user wants to analyze, summarize, or get a diagnostic of the current or a recent Claude Code session for this macOS project — session feedback, what happened during a build, where the agent got stuck, token/turn metrics, or a write-up to attach to a bug report. Runs the bundled analyze-session.py. User-invoked.
+description: Use when the user wants to analyze, summarize, or get a diagnostic of the current or a recent Claude Code session for this macOS project — session feedback, what happened during a build, where the agent got stuck, token/turn metrics, or a write-up to attach to a bug report. Runs the bundled analyze-session.swift. User-invoked.
 disable-model-invocation: true
 ---
 
@@ -8,14 +8,14 @@ disable-model-invocation: true
 
 ## Overview
 
-Generate a diagnostic report for a Claude Code session by running the **`analyze-session.py`** bundled with this skill — never by hand-parsing transcripts. It reads the session JSONL under `~/.claude/projects/…`, classifies turns, and emits a structured markdown report (metrics, skills, build analysis, stuck patterns, per-turn detail). User-invoked only (`disable-model-invocation: true`); the agent does not load it on its own.
+Generate a diagnostic report for a Claude Code session by running the **`analyze-session.swift`** bundled with this skill — never by hand-parsing transcripts. It reads the session JSONL under `~/.claude/projects/…`, classifies turns, and emits a structured markdown report (metrics, skills, build analysis, stuck patterns, per-turn detail). User-invoked only (`disable-model-invocation: true`); the agent does not load it on its own.
 
 > **Don't hand-write a session diagnostic.** The project ships a purpose-built analyzer. Re-deriving metrics by grepping the repo is slower, wrong, and — critically — skips the privacy guard below. Discover and run the script.
 
 ## Always pass `--output` (privacy + context safety)
 
 ```bash
-python3 plugins/appkit/skills/appkit-session-report/analyze-session.py --output session-report.md
+plugins/appkit/skills/appkit-session-report/analyze-session.swift --output session-report.md
 ```
 
 **Run it from the project directory** and **always pass `--output`.** Two reasons:
@@ -28,17 +28,17 @@ The analyzer also auto-selects the session by the current working directory (new
 
 ```bash
 # Most-recent session for THIS project dir (the usual case) — always with --output
-python3 .../analyze-session.py --output session-report.md
-python3 .../analyze-session.py --session-id <uuid> --output session-report.md   # a specific session
-python3 .../analyze-session.py --events-file <transcript.jsonl> --output report.md  # a transcript file directly
-python3 .../analyze-session.py --skip-subagents --output session-report.md       # parent-only view
+.../analyze-session.swift --output session-report.md
+.../analyze-session.swift --session-id <uuid> --output session-report.md   # a specific session
+.../analyze-session.swift --events-file <transcript.jsonl> --output report.md  # a transcript file directly
+.../analyze-session.swift --skip-subagents --output session-report.md       # parent-only view
 ```
 
-Requires **Python 3.10+** (stdlib only — no pip installs). **Claude Code only** — it does not support other harnesses and exits with a clear message if it can't find a session. Honors `$CLAUDE_SESSION_ID` when no `--session-id`/`--events-file` is given.
+Requires the **Swift toolchain** (Xcode) — it is a single hashbang `swift` script importing only Foundation (no packages, no pip). First run compiles (~1–3s); subsequent runs are cached by the toolchain. **Claude Code only** — it does not support other harnesses and exits with a clear message if it can't find a session. Honors `$CLAUDE_SESSION_ID` when no `--session-id`/`--events-file` is given.
 
 ## Privacy — surface this to the user, every time
 
-`analyze-session.py` embeds a **"Privacy and sensitivity"** section at the top of the report and prints a **PRIVACY NOTICE** banner to stderr (on `--output`). **Do not let that stay buried in script output the user may not have read.** When you report the findings, include a short privacy reminder in your own words — adapt this:
+`analyze-session.swift` embeds a **"Privacy and sensitivity"** section at the top of the report and prints a **PRIVACY NOTICE** banner to stderr (on `--output`). **Do not let that stay buried in script output the user may not have read.** When you report the findings, include a short privacy reminder in your own words — adapt this:
 
 > ⚠️ **Before you share `session-report.md`** — it's your **unredacted** session transcript: file contents and paths the agent read/edited, your prompts verbatim (including any secrets you pasted), tool output, signing identities, and local `/Users/<you>/…` paths. Open it and read it end-to-end before attaching it to a public issue, posting it in chat, or sending it outside your org. Redact anything sensitive — or ask me to share just the high-level metrics instead of the file.
 
