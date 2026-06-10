@@ -31,7 +31,7 @@ appkit-packaging                   ✅ SKILL.md (draft) + references/ci-and-app-
 appkit-launch-continuity           ✅ SKILL.md (WWDC-26 draft — needs polish pass)
 appkit-modern-input                ✅ SKILL.md (WWDC-26 draft — needs polish pass)
 appkit-liquid-glass-concentricity  ✅ SKILL.md (WWDC-26 draft — has a "TBD interactive-glass API" note appkit-api can now RESOLVE)
-appkit-design                      ⛔ NO SKILL.md yet — dir holds built appkit-api/appkit-search binaries only  → Phase 2
+appkit-design                      ✅ SHIPPED (Phase 2, merged main 7a3dfd4) — SKILL.md + 9 references, tool-wired, GREEN-verified
 appkit-private-apis                ⛔ does not exist                                                              → Phase 3
 appkit-app-inspector               ⛔ does not exist                                                              → Phase 3
 appkit-session-report              ⛔ NO SKILL.md yet — dir holds analyze-session.py payload only                → Phase 4
@@ -61,7 +61,9 @@ appkit-session-report              ⛔ NO SKILL.md yet — dir holds analyze-ses
 
 ---
 
-## Phase 2 — `appkit-design` (the flagship)
+## Phase 2 — `appkit-design` (the flagship) ✅ SHIPPED
+
+> **Done (merged to `main`, `7a3dfd4`).** `SKILL.md` + 9 `references/`, wired to `appkit-search` + `appkit-api`, authored under the full writing-skills loop (RED → GREEN → adversarial symbol-audit → GREEN-verify, 0 evasions). The audit also fixed the `build-tools.sh` resource-bundle install bug and 2 latent 1b corpus compile bugs (read-only `cornerConfiguration`, dead `/tables` HIG urls); `appkit-dev` agent un-hedged. Reusable audit harness at `scripts/wf-appkit-design-audit.js`. **Phase 5 carry:** corpus integrity tests don't compile `swiftCode` — do a suite-wide compile/symbol audit of all 69 patterns. The plan below is retained for reference.
 
 **Goal:** the suite's marquee skill — given a UI requirement, pick the canonical AppKit control/layout, grounded in the HIG, with correct modern code. This is `win-dev-skills`' `winui-design` analog and the single highest-visibility skill.
 

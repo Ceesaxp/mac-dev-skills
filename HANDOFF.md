@@ -12,13 +12,18 @@ Building `mac-dev-skills` — a Claude Code plugin suite for modern (macOS 26/27
 
 - **Phase 0** ✅ shipped (merged to main) — plugin scaffold: marketplace + plugin manifests, 9 relocated AppKit skills, `appkit-dev` agent.
 - **Phase 1a** ✅ shipped (merged to main) — `appkit-api`: SDK API/availability validator (symbol-graph backed, Swift Testing).
-- **Phase 1b** ✅ COMPLETE (on `feat/appkit-search`, ready to merge) — `appkit-search`: BM25 search over a **curated 69-pattern corpus** of canonical AppKit patterns.
-  - Engine: faithful winui-search BM25 port (k1=1.2/b=0.75, weighted-field tf, 3-stage synonym pipeline), 4 CLI verbs (search/get/list/debug), **44 Swift Testing tests pass**.
-  - Corpus: all 69 patterns authored, **HIG-grounded** (whenToUse + higReference per pattern), and **every keySymbol verified against the macOS 27 SDK** (115 types + 270 members = 385 symbols all resolve via `appkit-api`).
-  - Adversarial review caught + fixed real bugs: 1 wrong `minMacOS`, 1 hallucinated delegate method, 1 hallucinated prose symbol, 4 stub code bodies. Corpus-wide sweep confirms zero remaining stubs.
-  - `build-tools.sh` builds/signs/installs both `appkit-api` and `appkit-search`.
+- **Phase 1b** ✅ shipped (merged to main) — `appkit-search`: BM25 search over a **curated 69-pattern corpus** of canonical AppKit patterns. Engine: faithful winui-search BM25 port, 4 CLI verbs, **44 Swift Testing tests**. Corpus: 69 patterns, HIG-grounded, keySymbols verified against the macOS 27 SDK.
+- **Phase 2** ✅ shipped (merged to main, `7a3dfd4`) — `appkit-design` flagship skill wired to both tools.
+  - `SKILL.md` (grounding mandate + hygiene checklist + 6-step workflow + anti-patterns + rationalization table) + 9 `references/` (app-type anchors, control selection, layout & spacing, semantic color, typography, Liquid Glass, window sizing, accessibility, anti-patterns) — each HIG-grounded and `appkit-api` symbol-verified.
+  - Authored under the writing-skills loop: **RED** (4 baselines without the skill: tool-use 1/4, a11y identifiers 0/4, hardcoded frames, false `.inset`==glass) → **GREEN** → **adversarial symbol-audit** → **GREEN-verify** (4/4 ground with the tools, set a11y identifiers, derive window size, adopt glass explicitly; **0 evasions**).
+  - Fixed `build-tools.sh` to install `appkit-search`'s resource bundle next to the binary (it was fatal-erroring on every real query).
+  - **Audit found + fixed 2 latent 1b corpus bugs** (passed structural tests, wouldn't compile): read-only `NSView.cornerConfiguration` was *assigned* (→ override the getter) in 2 patterns; 6 patterns cited the dead `/human-interface-guidelines/tables` (→ `/lists-and-tables`).
+  - `appkit-dev` agent un-hedged: loads `appkit-design` by default.
+  - Reusable audit harness committed at `scripts/wf-appkit-design-audit.js` (generalize for Phase 5).
 
-**Next:** Phase 2 (`appkit-design` flagship skill wired to both tools).
+**Next:** Phase 3 (`appkit-private-apis` + `appkit-app-inspector` + the advisory cross-references).
+
+**⚠️ Carry into Phase 5:** the corpus integrity tests do **not** compile the `swiftCode`. The audit only spot-checked the 2 corner patterns it touched — a **suite-wide compile/symbol audit of all 69 patterns' `swiftCode`** is warranted (generalize `scripts/wf-appkit-design-audit.js`). Also note: `appkit-api check` resolves protocol-declared members under their **protocol owner** (e.g. `setAccessibilityIdentifier` under `NSAccessibilityProtocol`, not `NSView`) — a not-found on `Type.member` is not automatically a hallucination.
 
 ➡️ **For Phases 2–5, read `docs/superpowers/plans/2026-06-09-phases-2-5-handoff.md`** — it has the per-phase plan, the verified skill-status table, and the process rules (writing-skills Iron Law, symbol-grounding with `appkit-api`, adversarial review, Workflow-tool gotchas).
 
