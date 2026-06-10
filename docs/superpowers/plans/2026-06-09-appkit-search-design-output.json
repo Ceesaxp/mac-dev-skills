@@ -1,0 +1,1247 @@
+{
+  "engineSpec": {
+    "bm25": {
+      "k1": 1.2,
+      "b": 0.75,
+      "idfFormula": "idf = log( (N - df + 0.5) / (df + 0.5) + 1 )  // natural log (Math.Log, base e). N = corpus.N (total docs = core patterns + unique controls). df = number of docs containing the term. The '+ 1' inside the log is the BM25+ non-negativity guard (Lucene-style) so IDF is never negative even for very common terms. Per-term contribution to score = idf * tfNorm where tfNorm = (tf*(k1+1)) / (tf + k1*(1 - b + b*(docLen/avgDl))). Doc score = sum over query terms present in the doc. Terms with tf==0 in the doc are skipped (no contribution).",
+      "scoringNotes": "EXACT formula from BM25.cs Score(): for each query word, if doc.Tf contains it with tf>0: df=corpus.Df[word]; idf=log((N-df+0.5)/(df+0.5)+1); tfNorm=(tf*(K1+1))/(tf+K1*(1-B+B*(doc.Length/corpus.AvgDl))); score+=idf*tfNorm. KEY DETAIL: 'tf' is NOT an integer count \u2014 it is a WEIGHTED field-sum. BM25.BuildDoc(params (text,weight)[]) accumulates doc.Tf[word] += weight for every occurrence, and doc.Length += weight per token. So a term appearing in a weight-5.0 field contributes 5.0 to tf; doc.Length is the sum of all field weights x token counts (a fractional 'document length'). avgDl = totalLen / max(N,1). DF is computed once per doc per distinct term (HashSet dedup in BuildCorpus). The corpus is rebuilt PER QUERY over all docs (core docs concatenated with control docs) \u2014 there is no persistent inverted index; everything is recomputed each search. A second, nested BM25 pass runs to rank scenarios WITHIN a chosen control: scenDocs built from (HeaderText,2.0)+(ControlName,1.0), its own mini-corpus, scored with the same Score(). Multiplicative boosts are applied to the doc score AFTER BM25 (name/compound/source/platform), and a coverage gate / relevance floor can zero or drop results. Field weights for control docs: controlName 3.0, controlId 3.0, camelCase-split name 2.5, curated keywords 5.0 (highest), enrichment tags 3.0, headers 1.5 (Search) or 0.8 (SearchGrouped). Core-pattern doc field weights: tags 3.0, scenario 2.0, description 1.0, id 1.0."
+    },
+    "tokenization": "\"BM25.Tokenize(text) is the single tokenizer. Steps, in exact order: (1) text.ToLowerInvariant() \u2014 all matching is lowercase, case-insensitive. (2) Regex replace [^a-z0-9\\\\s\\\\-] -> ' ' (NonAlphaRegex): strips every char that is not a lowercase letter, digit, whitespace, or hyphen. Note hyphens are PRESERVED at this stage (kept inside tokens). (3) Split on the SPACE char only (' ', StringSplitOptions.RemoveEmptyEntries) \u2014 note: splits on space, not on the regex-inserted runs in a special way; consecutive spaces produce empty entries that are removed. (4) Filter: keep word only if word.Length > 1 (drops single chars) AND not in StopWords.Common. No Porter/Snowball stemming inside Tokenize. Stemming is a SEPARATE step done upstream in Synonyms.Preprocess (suffix-stripping -s/-ed/-ing with doubled-consonant + silent-e candidate variants, plus a small StemExceptions map like paginated->page, tabbed->tab/tabs). CamelCase/PascalCase splitting is done by SearchEngine.SplitCamelCase (e.g. 'TokenizingTextBox' -> 'Tokenizing Text Box') and fed in as a separate weighted doc field (2.5), NOT by the tokenizer. CompactQuery() (Regex [^a-z0-9] removed, lowercased) builds a no-separator form used for compound/substring name boosts (e.g. 'color picker button' -> 'colorpickerbutton'). PORT NOTE for Swift: Swift String.lowercased() ~ ToLowerInvariant but be careful with locale \u2014 use a fixed/invariant lowercasing; replicate the regex with the SAME char class; split on ASCII space; min length > 1; reuse the same stopword set.\"",
+    "stopwords": "\"StopWords.cs defines TWO sets. (1) StopWords.Common (~180 words): articles/conjunctions/pronouns/prepositions (the,a,an,and,or,is,are,...,with,by,from,as,at,...), generic verbs (use/used/using,set,get,make,made,displays,display,shows,show,lets,let,contains,...), generic UI nouns with no discrimination value (control,controls,property,properties,value,values,default,custom,new,component,sample,example,user,content,app,item,items,element,elements), tech terms (csharp,xaml,uwp,winui,communitytoolkit), WCT-doc filler (some,note,however,should,similar,object(s),allows,...), and low-signal Gallery HeaderText words (basic,adding,changes,header,options,another). Applied INSIDE BM25.Tokenize (the .Where filter) so Common words are dropped from BOTH the query tokens AND all indexed doc text \u2014 this is the live, hot-path stoplist. (2) StopWords.TagOnly (text,input,layout,pick,basics,advanced): a SUPERSET-only-for-tags list. Removed from tag/enrichment dictionaries via FilterTagList()/CleanTagDictionary() but NOT from BM25.Tokenize \u2014 so a user query 'text editor' still keeps 'text' and matches TextBox via its camelCase-split name field, while 'text' is stripped from noisy tag lists (Clipboard/ColorPicker). Helpers: IsCommon(w)=Common.Contains; IsTagNoise(w)=Common||TagOnly; FilterTagList also drops single-word '*sample'-suffix tokens and dedupes. PORT NOTE: keep Common verbatim as the query/index stoplist. TagOnly is only relevant if you keep separately-curated tag arrays; for a single curated corpus you can fold the distinction or keep it the same way. Comment in code notes BM25's IDF already down-weights common words, but stripping saves space/tokens.\"",
+    "synonyms": "\"Synonyms.cs has THREE mechanisms, applied at two pipeline stages. STAGE 1 \u2014 Synonyms.Preprocess(query) runs FIRST, before tokenization, and APPENDS (never replaces) extra tokens to the raw query string: (a) Phrases dict (~90 entries, lowercase, exact word-boundary substring match): multi-word UI phrases -> single merged token, e.g. 'data grid'->'datagrid', 'color picker'->'colorpicker', 'context menu'->'contextmenu', 'drag and drop'->'dragdrop'. Both forms remain searchable because it appends. (b) Stemming: for each whitespace/punct-split word it appends suffix-stripped base forms via Stem() (-s/-ed/-ing with doubled-consonant 'dragging->drag' and silent-e 'closing->close' candidate variants; emits multiple candidates, wrong ones simply match nothing). (c) StemExceptions dict overrides Stem() for irregulars: paginated/paginating/paging/pages->page, tabbed->[tab,tabs]. STAGE 2 \u2014 Synonyms.Expand(tokens[]) runs AFTER BM25.Tokenize, before scoring. It maps cross-framework/cross-platform UI vocabulary to WinUI control names via Map (~110 entries, e.g. modal->[contentdialog,dialog], datagrid->[listview,table,rows,columns], sidebar->[navigationview,splitview,navigation], fab->[button], a11y->[accessibility,screenreader,...]). Returns original tokens PLUS deduped synonym tokens. KEY GUARD \u2014 compound-suffix guard: if the query already contains a longer compound ending with the current token (e.g. tokens contain both 'picker' and 'filepicker'), Expand SKIPS expanding the bare token ('picker') so the specific compound intent isn't diluted by generic synonyms. PIPELINE ORDER (from Search/SearchGrouped/RunDebug): raw query -> Preprocess (phrases+stems appended) -> BM25.Tokenize (lowercase, strip, stopword-filter) -> Expand (synonyms appended) -> BM25.Score with expandedWords. The COVERAGE GATE deliberately uses the RAW tokens (BM25.Tokenize(query).Distinct(), NOT preprocessed/expanded) so synonym inflation doesn't cause false rejections. PORT NOTE: keep all three dicts as data; they are the bulk of search quality. For a single AppKit corpus you'd retranslate Map's right-hand control names to AppKit class names (NSButton, NSTableView, NSPopover, NSStackView, etc.) and Phrases to AppKit phrasings, but the mechanism ports verbatim.\"",
+    "dataModelFields": [
+      {
+        "name": "Scenario.id",
+        "type": "string",
+        "purpose": "Unique scenario id, scheme '{controlId}-{N}' (e.g. 'tabview-1', 'settingscard-9'). N is the 1-based scenario index within a control. In CLI output it is shown PREFIXED with source ('gallery-tabview-1' / 'toolkit-settingscard-9'); the bare id is stored. get parses trailing -N as int so -2 sorts before -10."
+      },
+      {
+        "name": "Scenario.controlId",
+        "type": "string",
+        "purpose": "Lowercased control identifier (Gallery UniqueId lowercased; toolkit sample-name normalized via SampleOverrides). Used as a BM25 field (weight 3.0) and as the grouping key. Composite key '{source}:{controlId}' groups scenarios and keeps gallery vs toolkit collisions (colorpicker, wrappanel) separate."
+      },
+      {
+        "name": "Scenario.controlName",
+        "type": "string",
+        "purpose": "Display name / canonical control name (Gallery Title / toolkit control). Highest-structure field: BM25 field weight 3.0, plus a camelCase-split variant (weight 2.5), plus whole-word and compound/substring multiplicative boosts. Also used by Notes.Get() to look up pitfalls + family guidance."
+      },
+      {
+        "name": "Scenario.headerText",
+        "type": "string",
+        "purpose": "Per-scenario sample title (Gallery ControlExample HeaderText / toolkit '## SampleName' or md Header). The thing that distinguishes scenarios within one control. BM25 field (1.5 in Search, 0.8 aggregated in SearchGrouped, 2.0 in the per-scenario nested ranking). Generic values (Basic usage / Example N / 'This is the ...') trigger a 0.85 demotion; Basic/Simple/'A basic' get a +0.1 tie-break nudge."
+      },
+      {
+        "name": "Scenario.xaml",
+        "type": "string?",
+        "purpose": "The scenario's XAML snippet (nullable; present in 294/325 gallery, 48/48 toolkit). Emitted in get output inside a ```xml fence after NormalizeIndent(). Not used for scoring."
+      },
+      {
+        "name": "Scenario.csharp",
+        "type": "string?",
+        "purpose": "The scenario's C# snippet (nullable; 223/325 gallery, 34/48 toolkit). Emitted in get inside ```csharp fence, but SUPPRESSED when IsBoilerplatePageWrapper() detects an empty InitializeComponent-only Page ctor. Not scored."
+      },
+      {
+        "name": "Scenario.source",
+        "type": "string",
+        "purpose": "'gallery' or 'toolkit' (core patterns are a separate type entirely). Drives id prefix (gallery-/toolkit-), output metadata (toolkit shows NuGet/xmlns Setup line; gallery shows non-default Namespace), and source-intent boost (wantsToolkit x1.6). For the port: collapse to a single source (no split)."
+      },
+      {
+        "name": "Scenario.nugetPackage",
+        "type": "string?",
+        "purpose": "NuGet package id required for the control (toolkit only: 48/48 set, gallery 0). Emitted in get as 'Setup: NuGet `pkg`'. Port equivalent would be a framework/import requirement (likely droppable for a single AppKit corpus where everything is in AppKit)."
+      },
+      {
+        "name": "Scenario.xmlnsImports",
+        "type": "string[]",
+        "purpose": "XAML namespace declarations needed (toolkit only: 48/48). Emitted in the Setup line. Port: maps to nothing for AppKit XAML-less code, likely drop or repurpose as required imports/modules."
+      },
+      {
+        "name": "Scenario.description",
+        "type": "string?",
+        "purpose": "Longer per-scenario/per-control description. In Gallery it is essentially unused (1/325 set) and only ever fed as tag-source text, not surfaced. In toolkit it is the sample's prose description (42/48). Used as a fallback ControlDescription when all scenarios share it, and shown as a row suffix ' \u2014 desc' when it differs from the control summary."
+      },
+      {
+        "name": "Scenario.controlDescription",
+        "type": "string?",
+        "purpose": "One-line control concept summary (Gallery: ControlInfoData Subtitle, median 68 chars, 324/325; toolkit: md frontmatter description, 48/48). Surfaced in search as '[source] Name \u2014 <summary>'. Promoted to group level in SearchGrouped. NOT scored. High-value for compact agent output."
+      },
+      {
+        "name": "Scenario.relatedControls",
+        "type": "string[]",
+        "purpose": "Names of 'see also' related/alternative controls (Gallery only: 295/325; toolkit 0). Emitted in get as '**See also:** A, B, C'. Not scored. Port: a curated cross-reference list per AppKit control."
+      },
+      {
+        "name": "Scenario.apiNamespace",
+        "type": "string?",
+        "purpose": "API namespace from ControlInfoData (Gallery only: 288/325). Emitted in get as '**Namespace:** `x`' ONLY when non-default (i.e. not Microsoft.UI.Xaml.Controls) \u2014 helps agents pick the right using/xmlns for long-tail controls. Not scored. Port: AppKit module/framework hint, shown only when non-obvious (e.g. not 'AppKit')."
+      },
+      {
+        "name": "Scenario.docs",
+        "type": "DocLink[]",
+        "purpose": "Official documentation links (title+uri). Gallery 324/325, toolkit 0. KEPT on the model but DELIBERATELY NOT EMITTED \u2014 benchmark logs showed agents never fetch them, so emitting them was pure token overhead. Port: probably drop entirely, or keep but don't print."
+      },
+      {
+        "name": "DocLink.title / DocLink.uri",
+        "type": "string / string",
+        "purpose": "Title and URL of a documentation link. Only consumed as part of Scenario.docs; not printed."
+      },
+      {
+        "name": "CorePattern.id",
+        "type": "string",
+        "purpose": "Hand-curated pattern id, NOT prefixed (e.g. 'jumplist-recent-files', 'file-picker-desktop'). Used directly by get/list and as a BM25 field (weight 1.0). 6 patterns total. Also the boost target of PlatformKeywordToPatternId (share/jumplist/taskbar/tray/drag/drop/picker -> specific pattern id, x1.6)."
+      },
+      {
+        "name": "CorePattern.scenario",
+        "type": "string",
+        "purpose": "Human-readable one-line scenario description (e.g. 'Show recently opened files/folders in the taskbar right-click menu'). BM25 field weight 2.0. Shown as the list/search row text and the '## ' heading in get output."
+      },
+      {
+        "name": "CorePattern.tags",
+        "type": "string[]",
+        "purpose": "Curated keyword array (e.g. [jumplist,taskbar,recent,files,folders,pin,'start menu']). HIGHEST core field weight 3.0 \u2014 the primary match surface for core patterns."
+      },
+      {
+        "name": "CorePattern.description",
+        "type": "string",
+        "purpose": "Paragraph describing the pattern. BM25 field weight 1.0; printed right under the heading in get."
+      },
+      {
+        "name": "CorePattern.prerequisites",
+        "type": "string[]",
+        "purpose": "Setup requirements (e.g. 'App must be packaged'). Emitted in get under '**Prerequisites:**' as a bullet list. Not scored."
+      },
+      {
+        "name": "CorePattern.xaml",
+        "type": "string?",
+        "purpose": "Optional XAML for the pattern (often null for code-only platform patterns). Emitted in ```xml fence with NormalizeIndent when present. Not scored."
+      },
+      {
+        "name": "CorePattern.csharp",
+        "type": "string",
+        "purpose": "The pattern's C# code (required, non-null). Always emitted in get under '**C#:**' ```csharp fence with NormalizeIndent. Not scored (only the id field carries the code-pattern id into BM25)."
+      },
+      {
+        "name": "CorePattern.notes",
+        "type": "string[]",
+        "purpose": "Important gotchas/tips bullets. Emitted in get under '**Important:**'. Not scored. (Analogous to the per-control Notes.KnownPitfalls for scenarios.)"
+      },
+      {
+        "name": "Tag dictionaries (gallery-tags.json / toolkit-tags.json)",
+        "type": "Dictionary<string,string[]>",
+        "purpose": "Per-control enrichment keyword arrays keyed by controlId (gallery 124 entries, toolkit 28). Loaded into _enrichmentTags under composite key '{source}:{controlId}'. Concatenated and used as the BM25 'enrichment tags' field (weight 3.0). Auto-extracted from Title/Subtitle/Description (gallery) or md/commit text (toolkit), cleaned by FilterTagList (drops Common+TagOnly stopwords, *sample suffixes)."
+      },
+      {
+        "name": "Keywords dictionary (toolkit-keywords.json)",
+        "type": "Dictionary<string,string[]>",
+        "purpose": "Author-curated high-quality intent terms from toolkit md frontmatter 'keywords:' (28 entries; gallery has none). Loaded into _curatedKeywords by composite key. HIGHEST BM25 weight (5.0) of any field \u2014 author-picked terms are the strongest relevance signal. Also used in the platform-keyword reverse-demotion guard as a 'real match' source."
+      },
+      {
+        "name": "Notes (Notes.cs, hardcoded \u2014 NOT JSON)",
+        "type": "C# dictionaries",
+        "purpose": "Out-of-band enrichment looked up by controlName in get output (not part of the JSON data model, not scored): KnownPitfalls (controlName -> string[] of control-specific gotchas, emitted as '**Important:**'), ControlToFamily + FamilyGuide (controlName -> family key -> 'when to pick X vs Y' disambiguation, emitted as '**Family (Name):** guide'). Notes.Get(controlName) returns {Pitfalls[], FamilyName, FamilyGuide}. Port: this is high-value curated content; for AppKit you'd rewrite the pitfalls/families for NS* controls."
+      }
+    ],
+    "cliVerbs": [
+      {
+        "verb": "search",
+        "args": "<query> [<query2> ...] [--max N] [--source gallery|toolkit|core]   (N default 3; each separate quoted arg is a distinct query => batch mode; positional args of a single query are joined; --source restricts to one source, validated)",
+        "output": "Grouped, compact text for agent consumption. Single query: 'Found K matches for \"q\":' then per group either a core flat row '  <id>: <scenario>' OR a control block: '  [source] ControlName \u2014 <controlDescription>' followed by indented scenario rows '    <prefixed-id>: <compressedHeader>[ \u2014 rowDesc]'. CompressHeader strips leading A/An/The, trailing ' by/using <ControlName>', 'with support for'->'supports'. Ends with 'To get full code: winui-search get <id> ...'. Batch: 'Batch search: K queries' then per query '### Query i: \"q\"' blocks, with cross-query dedup (a control already shown earlier and not >=1.3x stronger emits '  [source] Name -> see Query j'). No blank separator lines (CLI capture collapses them). Internally calls SearchGrouped(query, maxControls=max, maxScenariosPerControl=3, sourceFilter). Returns up to maxControls groups after relevance floor (runner-ups need >=70% of top score; top-1 always kept) and coverage gate (>=3 raw query tokens => control must hit >=ceil(N/2) of them unless name-boosted)."
+      },
+      {
+        "verb": "get",
+        "args": "<id> [<id2> ...]   (one or more scenario/core ids; skill convention <=3 per call; ids may be 'gallery-...','toolkit-...', a bare core id, or a bare controlId which returns its lowest-numbered scenario)",
+        "output": "Full formatted markdown per id. Core pattern: '## <scenario>', description, optional '**Prerequisites:**' bullets, optional '**XAML:**' xml fence, '**C#:**' csharp fence, optional '**Important:**' notes bullets. Scenario: '## ControlName: HeaderText[ [CommunityToolkit]]', toolkit '**Setup:** NuGet `pkg` \u00b7 `xmlns...`' OR gallery '**Namespace:** `ns`' (only when non-default), '**XAML:**' fence, '**C#:**' fence (suppressed if boilerplate page wrapper), Notes '**Important:**' pitfalls, '**Family (X):** guide', '**See also:** related'. Code run through NormalizeIndent (remaps indent levels to 0/2/4/6...). Single id printed directly; multiple ids separated by a lone '---' line. Exit 1 if any id not found ('Pattern \"id\" not found.')."
+      },
+      {
+        "verb": "list",
+        "args": "[--source gallery|toolkit|core]   (validated single value)",
+        "output": "'Available patterns[ (--source S)]:' then sections by type: '## Core platform patterns', '## Gallery (WinUI 3)', '## CommunityToolkit', each with '  - <id>: <scenario-or-ControlName: HeaderText>' rows. Core first, then ALL scenarios grouped by (source,control) ordered source-then-controlName. Driven by SearchEngine.ListAll() which yields every core pattern then every scenario (prefixed id)."
+      },
+      {
+        "verb": "debug",
+        "args": "<query>   (positional words joined into one query)",
+        "output": "Diagnostic dump: 'Query: \"q\"', 'Preprocessed: \"...\"' (Synonyms.Preprocess), 'Tokens: [...]' (BM25.Tokenize of preprocessed), 'Expanded: [...]' (Synonyms.Expand), then 'Top K groups (no floor):' from SearchGrouped(maxControls=20, maxScenariosPerControl=1, applyFloor=false) with a \u2605 marker for HasNameBoost and the raw score: '  \u2605  <score>  [source] ControlName  (id)'. Pure tuning aid \u2014 exposes the whole pipeline."
+      },
+      {
+        "verb": "update",
+        "args": "[--background]   (--background is internal, for the spawned child only \u2014 suppresses output, skips cache wipe)",
+        "output": "Live re-fetch from GitHub (microsoft/WinUI-Gallery@main + CommunityToolkit/Windows@main) rewriting the %LOCALAPPDATA% cache; prints 'Cache refreshed from GitHub.' / partial / failed. PORT: DROP ENTIRELY \u2014 this is the live-fetch/background-updater machinery (GalleryFetcher, ToolkitFetcher, BackgroundUpdater, CacheVersion, ForceFetch) that our single-embedded-corpus design explicitly excludes."
+      },
+      {
+        "verb": "(no args / unknown)",
+        "args": "",
+        "output": "PrintUsage(): tool banner + command list + --source note + examples; returns exit code 1."
+      }
+    ],
+    "portNotes": [
+      "KEEP VERBATIM \u2014 BM25.cs core math: k1=1.2, b=0.75, the IDF '+1' Lucene-style formula, the weighted-tf (field weight accumulates into tf and doc.Length) design, BuildDoc/BuildCorpus/Score/CountHits. This is the proven heart; port it 1:1 to Swift. The weighted-field approach (instead of separate field BM25F) is the clever part \u2014 reproduce it.",
+      "KEEP VERBATIM \u2014 the tokenizer pipeline ORDER: Preprocess(phrases+stems) -> Tokenize(lowercase, strip [^a-z0-9\\s\\-], split space, len>1 + stopword filter) -> Expand(synonyms) -> Score. The coverage gate using RAW (un-expanded) tokens is a subtle, important correctness detail \u2014 keep it.",
+      "KEEP (as data) \u2014 StopWords.Common, Synonyms.Phrases, Synonyms.Stem + StemExceptions, Synonyms.Map. These dicts ARE the search quality. For AppKit, RETRANSLATE the right-hand sides of Map and the Phrases values to AppKit class names (NSButton, NSTableView/NSOutlineView, NSPopover/NSMenu, NSStackView, NSSegmentedControl, NSSearchField, NSTabView, NSColorWell/NSColorPanel, NSComboBox, NSTextField/NSTextView, NSProgressIndicator, etc.) and to Mac-developer phrasings. The mechanism is unchanged.",
+      "KEEP \u2014 the two-layer search: control-level grouping (composite source:controlId key) then per-scenario nested BM25 ranking; the multiplicative boosts (whole-word name x2.0, longest-compact-compound x4.0 / non-longest x1.3, >=6-char substring-in-compact-name x2.5); the generic-header demotion (x0.85) and Basic-header tie nudge (+0.1); the 70% relevance floor on runners-up; the coverage gate (>=3 tokens => >=ceil(N/2) hits unless name-boosted). These produce the curated-feeling results.",
+      "KEEP \u2014 the data model fields that drive scoring and compact output: id ({controlId}-{N}), controlId, controlName, headerText, xaml, csharp, controlDescription (the one-line summary, very token-efficient), relatedControls, plus per-control enrichment tags and curated keywords (5.0-weight). KEEP CorePattern entirely (id/scenario/tags/description/prerequisites/xaml/csharp/notes) as the curated-pattern index. KEEP the Notes.cs concept (per-control pitfalls + family disambiguation) \u2014 high value; rewrite content for AppKit.",
+      "SIMPLIFY/COLLAPSE \u2014 the source split. Our corpus is ONE curated embedded set: drop Scenario.source, the gallery/toolkit prefixes, the composite '{source}:{controlId}' keying (a plain controlId key suffices), the wantsToolkit/ToolkitIntent x1.6 boost, and --source filtering (or keep --source only if you later add categories). Drop the gallery-vs-toolkit collision handling entirely.",
+      "DROP ENTIRELY \u2014 all live-fetch / freshness machinery: GalleryFetcher.cs, ToolkitFetcher.cs, BackgroundUpdater.cs, CacheVersion.cs, the `update` verb, --background flag, ForceFetch(), RunWithBackgroundRefresh wrapper, the %LOCALAPPDATA% cache layout, the 7-day TTL, lock files, env overrides (WINUI_SEARCH_NO_BACKGROUND/DEBUG). Our design has no GitHub source. Load the embedded JSON once at startup and search it. This removes the majority of the non-search code.",
+      "DROP \u2014 toolkit-only fields for a homogeneous AppKit corpus: nugetPackage and xmlnsImports (no NuGet/xmlns in AppKit). Repurpose apiNamespace into an optional 'framework/import hint shown only when non-AppKit' (e.g. 'import Quartz', 'import WebKit', 'import UniformTypeIdentifiers'). Drop docs[] (kept-but-never-emitted dead weight) \u2014 or keep the field but don't print, matching upstream's deliberate choice. Drop Scenario.description if you fold its single use into controlDescription.",
+      "KEEP \u2014 output discipline tuned for agent token budgets: NormalizeIndent (remap indent to 0/2/4/6), IsBoilerplatePageWrapper suppression of empty ctor C#, CompressHeader (strip articles / trailing ' by/using ControlName' / 'with support for'->'supports'), the no-blank-line rule for batched output, the 'controlDescription as one-liner' compaction, and NOT emitting docs links. These directly reduce tokens; replicate the intent in the Swift formatter (AppKit equivalent of IsBoilerplatePageWrapper would detect empty NSViewController/awakeFromNib stubs).",
+      "KEEP \u2014 CLI surface: search (batch, --max, grouped output, get-hint footer), get (1..N ids, '---' separator, exact + bare-controlId fallback parsing trailing -N as int), list (sectioned), debug (Preprocess/Tokens/Expanded/top-N-no-floor dump \u2014 invaluable for tuning the Map/Phrases for AppKit). Implement these four verbs in Swift; omit update.",
+      "PORT MECHANICS \u2014 Swift specifics: use Codable structs mirroring Scenario/CorePattern; embed JSON via SwiftPM resources (Bundle.module) or string literals (no live fetch). Use an invariant/fixed-locale lowercasing (avoid Turkish-i issues) to match ToLowerInvariant. Replicate the regex char class exactly. The corpus is small (~380 docs) so rebuilding the BM25 corpus per query (as upstream does, no persistent inverted index) is perfectly fine in Swift too \u2014 no need to over-engineer an index."
+    ]
+  },
+  "candidatePatternCount": 108,
+  "corpusSchemaFields": 12,
+  "taxonomySize": 69,
+  "synth": {
+    "corpusSchema": [
+      {
+        "field": "id",
+        "type": "String",
+        "required": true,
+        "purpose": "Unique, stable, kebab-case pattern id (e.g. 'concentric-corner-configuration'). NOT source-prefixed (single curated corpus, no gallery/toolkit split). Used directly by `get`/`list`, as the lowest-weight BM25 field (weight 1.0), and as the boost target of the platform-keyword reverse map. Replaces winui CorePattern.id. The `get` verb also accepts a bare id; there is no '-N' scenario suffix because this corpus is flat (one doc per pattern, no nested scenarios)."
+      },
+      {
+        "field": "title",
+        "type": "String",
+        "required": true,
+        "purpose": "Human-readable canonical pattern name (e.g. 'Concentric nested corners with NSViewCornerConfiguration'). Highest-structure text field: BM25 weight 3.0, PLUS a camelCase/PascalCase-split variant fed as a separate field at weight 2.5 (via SplitCamelCase so 'NSGlassEffectView'->'NS Glass Effect View'), PLUS whole-word (x2.0) and longest-compact-compound (x4.0 / x1.3) and >=6-char-substring-in-compact (x2.5) multiplicative name boosts computed against the CompactQuery form. Analog of winui Scenario.controlName. Shown as the search row text and the '## ' heading in `get`."
+      },
+      {
+        "field": "summary",
+        "type": "String",
+        "required": true,
+        "purpose": "One- or two-sentence description of what the pattern does and the modern API it favors over the legacy path. BM25 weight 1.0 (description-class field). Surfaced verbatim in compact search output as the one-liner after the title (the token-efficient agent hint) and printed under the heading in `get`. Merges winui controlDescription (surfaced one-liner) and description (scored prose) into one field, since this corpus has no gallery/toolkit prose split."
+      },
+      {
+        "field": "category",
+        "type": "String",
+        "required": true,
+        "purpose": "Curated domain grouping label (e.g. 'Liquid Glass', 'Auto Layout', 'Lists & collections', 'Modern input', 'App lifecycle'). NOT scored. Drives `list` sectioning (sections by category, like winui's source sections) and an optional `--category` filter on `search`/`list` (the repurposed, validated `--source` slot). Also used for cross-query dedup grouping in batch search."
+      },
+      {
+        "field": "keySymbols",
+        "type": "[String]",
+        "required": true,
+        "purpose": "Curated array of the exact AppKit API symbols the pattern uses (e.g. ['NSViewCornerConfiguration','NSViewCornerRadius.containerConcentric','NSView.cornerConfiguration']). HIGHEST BM25 weight (5.0) \u2014 these are the author-picked strongest relevance signal, the AppKit analog of winui toolkit-keywords. Symbols are tokenized (and camelCase-split) so a query for 'cornerConfiguration' or 'glass effect view' matches. Also emitted in `get` under '**Key APIs:**' as a bullet list so an agent sees the exact symbols to call."
+      },
+      {
+        "field": "tags",
+        "type": "[String]",
+        "required": true,
+        "purpose": "Curated free-text keyword/intent array including cross-framework and Mac-developer phrasings (e.g. ['concentric corners','nested corner radius','rounded corners','liquid glass']). BM25 enrichment field, weight 3.0. Cleaned of Common+TagOnly stopwords on load (FilterTagList). The primary natural-language match surface; the AppKit analog of winui CorePattern.tags / enrichment tags. Not printed in `get` (search-only)."
+      },
+      {
+        "field": "minMacOS",
+        "type": "String?",
+        "required": false,
+        "purpose": "Minimum macOS version the pattern requires (e.g. '27.0', '26.0', '26.1'); empty/nil means broadly available (no special floor). NOT scored. Emitted in `get` as '**Available:** macOS X+' and in compact search as a trailing '(macOS 27+)' marker ONLY when set and >= a recent floor, so agents avoid using an API on too-old a target. Mirrors the candidate-pattern minMacOS field."
+      },
+      {
+        "field": "swiftCode",
+        "type": "String",
+        "required": true,
+        "purpose": "The canonical, copy-pasteable Swift implementation of the pattern (required, non-null). NOT scored (only id/title/summary/tags/keySymbols carry text into BM25). Emitted by `get` inside a ```swift fence, run through NormalizeIndent (remap indent to 0/2/4/6...). The core deliverable of `get` \u2014 replaces winui CorePattern.csharp/xaml. Boilerplate-only stubs (empty NSViewController/awakeFromNib/viewDidLoad) are suppressed by the AppKit equivalent of IsBoilerplatePageWrapper."
+      },
+      {
+        "field": "imports",
+        "type": "[String]",
+        "required": true,
+        "purpose": "The Swift import statements the snippet needs (e.g. ['AppKit'] or ['AppKit','UniformTypeIdentifiers','WebKit']). NOT scored. Emitted in `get` as '**Imports:**' (or inline above the code fence). Replaces winui nugetPackage/xmlnsImports/apiNamespace: shown always-compact, with non-obvious modules (anything beyond 'AppKit'/'Foundation') called out, since AppKit has no NuGet/xmlns."
+      },
+      {
+        "field": "pitfalls",
+        "type": "[String]",
+        "required": false,
+        "purpose": "Curated array of pattern-specific gotchas / 'don't do X' bullets (e.g. 'cornerConfiguration is read-only \u2014 react via viewDidChangeEffectiveCornerRadii, don't try to set it'). NOT scored. Emitted in `get` under '**Important:**'. The AppKit-rewritten analog of winui Notes.KnownPitfalls, but stored as data on the pattern (not an out-of-band hardcoded dictionary), so each curated pattern carries its own caveats. High value for agents."
+      },
+      {
+        "field": "related",
+        "type": "[String]",
+        "required": false,
+        "purpose": "Array of other pattern ids in this corpus that are alternatives or commonly used together (e.g. concentric-corner-configuration -> ['glass-effect-view-basic','corner-config-readonly']). NOT scored. Emitted in `get` as '**See also:** <id>, <id>'. Replaces winui relatedControls but references internal pattern ids (resolvable by `get`) rather than free-text control names, plus serves as the family/disambiguation hint that winui kept in Notes.FamilyGuide."
+      },
+      {
+        "field": "replaces",
+        "type": "String?",
+        "required": false,
+        "purpose": "Optional short note naming the legacy/deprecated API this modern pattern supersedes (e.g. 'overriding mouseDown:/tracking loops', 'NSLayoutManager/NSTextStorage', 'allowedFileTypes'). NOT scored (or optionally folded into tags so 'mouseDown' as a query surfaces the modern replacement). Emitted in `get` as '**Replaces:** ...'. Captures the strong 'modern vs legacy' framing that recurs across the candidate patterns (mouseDown-replacement, deprecated-material, not-flow-layout)."
+      }
+    ],
+    "taxonomy": [
+      {
+        "id": "concentric-corner-configuration",
+        "title": "Concentric nested corners with NSViewCornerConfiguration",
+        "category": "Liquid Glass & concentricity",
+        "keySymbols": [
+          "NSView.cornerConfiguration",
+          "NSViewCornerConfiguration",
+          "NSViewCornerRadius.containerConcentric",
+          "NSViewCornerConfiguration.uniformCorners(radius:)",
+          "NSView.effectiveCornerRadii"
+        ],
+        "minMacOS": "27.0",
+        "priority": "high"
+      },
+      {
+        "id": "corner-config-readonly",
+        "title": "React to resolved corners via viewDidChangeEffectiveCornerRadii",
+        "category": "Liquid Glass & concentricity",
+        "keySymbols": [
+          "NSView.cornerConfiguration",
+          "NSView.effectiveCornerRadii",
+          "NSView.viewDidChangeEffectiveCornerRadii",
+          "NSView.invalidateCornerConfiguration"
+        ],
+        "minMacOS": "27.0",
+        "priority": "medium"
+      },
+      {
+        "id": "glass-effect-view-basic",
+        "title": "Wrap content in Liquid Glass with NSGlassEffectView",
+        "category": "Liquid Glass & concentricity",
+        "keySymbols": [
+          "NSGlassEffectView",
+          "NSGlassEffectView.contentView",
+          "NSGlassEffectView.cornerRadius",
+          "NSGlassEffectView.style",
+          "NSGlassEffectView.tintColor",
+          "NSGlassEffectViewStyle"
+        ],
+        "minMacOS": "26.0",
+        "priority": "high"
+      },
+      {
+        "id": "glass-effect-container-merging",
+        "title": "Merge adjacent glass views with NSGlassEffectContainerView",
+        "category": "Liquid Glass & concentricity",
+        "keySymbols": [
+          "NSGlassEffectContainerView",
+          "NSGlassEffectContainerView.contentView",
+          "NSGlassEffectContainerView.spacing"
+        ],
+        "minMacOS": "26.0",
+        "priority": "medium"
+      },
+      {
+        "id": "button-glass-bezel-semantic-tint",
+        "title": "Glass push buttons with NSBezelStyle.glass and semantic tints",
+        "category": "Liquid Glass & concentricity",
+        "keySymbols": [
+          "NSButton.bezelStyle",
+          "NSBezelStyle.glass",
+          "NSButton.contentTintColor",
+          "NSColor.controlAccentColor",
+          "NSButton.hasDestructiveAction"
+        ],
+        "minMacOS": "26.0",
+        "priority": "high"
+      },
+      {
+        "id": "scroll-edge-effect-style",
+        "title": "Configure scroll edge effect via accessory controllers",
+        "category": "Liquid Glass & concentricity",
+        "keySymbols": [
+          "NSScrollEdgeEffectStyle",
+          "NSScrollEdgeEffectStyle.softStyle",
+          "NSScrollEdgeEffectStyle.hardStyle",
+          "NSTitlebarAccessoryViewController.preferredScrollEdgeEffectStyle",
+          "NSSplitViewItemAccessoryViewController.preferredScrollEdgeEffectStyle"
+        ],
+        "minMacOS": "26.1",
+        "priority": "medium"
+      },
+      {
+        "id": "visual-effect-view-material",
+        "title": "Semantic NSVisualEffectView materials, blending mode, and state",
+        "category": "Liquid Glass & concentricity",
+        "keySymbols": [
+          "NSVisualEffectView",
+          "NSVisualEffectView.material",
+          "NSVisualEffectMaterial.sidebar",
+          "NSVisualEffectView.blendingMode",
+          "NSVisualEffectBlendingMode.behindWindow",
+          "NSVisualEffectView.state"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "gesture-recognizers-basics",
+        "title": "Attach gesture recognizers instead of overriding mouseDown",
+        "category": "Modern input",
+        "keySymbols": [
+          "NSGestureRecognizer",
+          "NSClickGestureRecognizer",
+          "NSPressGestureRecognizer",
+          "NSPanGestureRecognizer",
+          "NSView.addGestureRecognizer(_:)",
+          "NSClickGestureRecognizer.numberOfClicksRequired"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "gesture-recognizer-coexistence",
+        "title": "Coordinate simultaneous/conflicting gestures via the delegate",
+        "category": "Modern input",
+        "keySymbols": [
+          "NSGestureRecognizerDelegate",
+          "NSGestureRecognizerDelegate.gestureRecognizer(_:shouldRecognizeSimultaneouslyWith:)",
+          "NSGestureRecognizer.delaysPrimaryMouseButtonEvents",
+          "NSMagnificationGestureRecognizer",
+          "NSRotationGestureRecognizer"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "control-events-target-action",
+        "title": "Wire controls with target-action and NSControl control events",
+        "category": "Modern input",
+        "keySymbols": [
+          "NSControl.target",
+          "NSControl.action",
+          "NSControl.sendAction(_:to:)",
+          "NSButton.addTarget(_:action:for:)",
+          "NSControlEvents.trackingEndedOutside",
+          "NSControl.isContinuous"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "view-context-menu-validation",
+        "title": "Context menus via menu(for:) / defaultMenu with item validation",
+        "category": "Modern input",
+        "keySymbols": [
+          "NSView.menu(for:)",
+          "NSView.defaultMenu",
+          "NSResponder.menu",
+          "NSMenuItemValidation.validateMenuItem(_:)",
+          "NSMenuItem.representedObject"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "tracking-area-hover-cursor",
+        "title": "Hover, cursor, and mouse-moved via NSTrackingArea",
+        "category": "Modern input",
+        "keySymbols": [
+          "NSTrackingArea",
+          "NSTrackingArea.Options",
+          "NSView.addTrackingArea(_:)",
+          "NSView.updateTrackingAreas()",
+          "NSView.mouseEntered(with:)",
+          "NSView.mouseExited(with:)"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "hittest-overlay-passthrough",
+        "title": "Fall clicks through overlay views by returning nil from hitTest",
+        "category": "Modern input",
+        "keySymbols": [
+          "NSView.hitTest(_:)",
+          "NSView",
+          "NSPoint"
+        ],
+        "minMacOS": "",
+        "priority": "low"
+      },
+      {
+        "id": "key-view-loop-autorecalculate",
+        "title": "Keep Tab navigation correct with autorecalculatesKeyViewLoop",
+        "category": "Modern input",
+        "keySymbols": [
+          "NSWindow.autorecalculatesKeyViewLoop",
+          "NSView.nextKeyView"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "autolayout-anchors-activate",
+        "title": "Activate Auto Layout constraints with anchors",
+        "category": "Auto Layout",
+        "keySymbols": [
+          "NSView.translatesAutoresizingMaskIntoConstraints",
+          "NSLayoutConstraint.activate(_:)",
+          "NSView.leadingAnchor",
+          "NSView.topAnchor",
+          "NSLayoutAnchor.constraint(equalTo:)",
+          "NSView.safeAreaLayoutGuide"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "hugging-compression-resistance",
+        "title": "Control stretch/truncation with hugging and compression resistance",
+        "category": "Auto Layout",
+        "keySymbols": [
+          "NSView.setContentHuggingPriority(_:for:)",
+          "NSView.setContentCompressionResistancePriority(_:for:)",
+          "NSView.intrinsicContentSize",
+          "NSLayoutConstraint.Priority.defaultLow",
+          "NSLayoutConstraint.Priority.defaultHigh"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "constraint-priority-debug",
+        "title": "Breakable priorities and debugging unsatisfiable constraints",
+        "category": "Auto Layout",
+        "keySymbols": [
+          "NSLayoutConstraint.priority",
+          "NSLayoutConstraint.Priority.required",
+          "NSView.layoutSubtreeIfNeeded()",
+          "NSLayoutGuide.constraintsAffectingLayout(for:)",
+          "NSView.needsUpdateConstraints"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "isflipped-coordinate-system",
+        "title": "Override isFlipped for top-left-origin custom views",
+        "category": "Auto Layout",
+        "keySymbols": [
+          "NSView.isFlipped",
+          "NSView.layout()",
+          "NSView.clipsToBounds",
+          "NSView.intrinsicContentSize"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "stackview-arranged-subviews",
+        "title": "Build resizable forms/lists with NSStackView arranged subviews",
+        "category": "Auto Layout",
+        "keySymbols": [
+          "NSStackView",
+          "NSStackView.orientation",
+          "NSStackView.distribution",
+          "NSStackView.addArrangedSubview(_:)",
+          "NSStackView.spacing",
+          "NSStackView.setCustomSpacing(_:after:)",
+          "NSStackView.detachesHiddenViews"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "gridview-label-field-form",
+        "title": "Align label/field settings forms with NSGridView",
+        "category": "Auto Layout",
+        "keySymbols": [
+          "NSGridView",
+          "NSGridView.addRow(with:)",
+          "NSGridCell.xPlacement",
+          "NSGridCell.Placement.trailing",
+          "NSGridView.columnSpacing",
+          "NSGridCell.rowAlignment"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "tableview-view-based-reuse",
+        "title": "View-based NSTableView with makeView + register cell reuse",
+        "category": "Lists & collections",
+        "keySymbols": [
+          "NSTableView.makeView(withIdentifier:owner:)",
+          "NSTableView.register(_:forIdentifier:)",
+          "NSTableCellView",
+          "NSTableViewDelegate.tableView(_:viewFor:row:)",
+          "NSTableColumn.identifier"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "tableview-diffable-datasource",
+        "title": "NSTableViewDiffableDataSource with animated snapshots",
+        "category": "Lists & collections",
+        "keySymbols": [
+          "NSTableViewDiffableDataSource",
+          "NSTableViewDiffableDataSource.init(tableView:cellProvider:)",
+          "NSDiffableDataSourceSnapshot",
+          "NSDiffableDataSourceSnapshot.appendItems(_:toSection:)",
+          "NSTableViewDiffableDataSource.apply(_:animatingDifferences:completion:)"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "tableview-diffable-sections-rowviews",
+        "title": "Diffable table section headers and custom row views",
+        "category": "Lists & collections",
+        "keySymbols": [
+          "NSTableViewDiffableDataSource.sectionHeaderViewProvider",
+          "NSTableViewDiffableDataSource.rowViewProvider",
+          "NSTableRowView",
+          "NSTableView.Style.inset"
+        ],
+        "minMacOS": "",
+        "priority": "low"
+      },
+      {
+        "id": "outlineview-datasource-delegate",
+        "title": "View-based NSOutlineView with data source and delegate",
+        "category": "Lists & collections",
+        "keySymbols": [
+          "NSOutlineView",
+          "NSOutlineViewDataSource",
+          "NSOutlineView.child(_:ofItem:)",
+          "NSOutlineView.numberOfChildren(ofItem:)",
+          "NSOutlineViewDelegate.outlineView(_:viewFor:item:)",
+          "NSOutlineView.expandItem(_:)"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "collectionview-diffable-datasource",
+        "title": "NSCollectionViewDiffableDataSource with item registration",
+        "category": "Lists & collections",
+        "keySymbols": [
+          "NSCollectionViewDiffableDataSource",
+          "NSCollectionView.makeItem(withIdentifier:for:)",
+          "NSCollectionView.register(_:forItemWithIdentifier:)",
+          "NSCollectionViewItem",
+          "NSDiffableDataSourceSnapshot"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "collectionview-compositional-layout",
+        "title": "NSCollectionViewCompositionalLayout instead of flow grids",
+        "category": "Lists & collections",
+        "keySymbols": [
+          "NSCollectionViewCompositionalLayout",
+          "NSCollectionLayoutSection",
+          "NSCollectionLayoutGroup",
+          "NSCollectionLayoutItem",
+          "NSCollectionLayoutSize"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "tableview-automatic-row-heights",
+        "title": "Self-sizing rows with usesAutomaticRowHeights",
+        "category": "Lists & collections",
+        "keySymbols": [
+          "NSTableView.usesAutomaticRowHeights",
+          "NSTableCellView",
+          "NSView.translatesAutoresizingMaskIntoConstraints",
+          "NSTableViewDelegate"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "tableview-row-actions-context-menu",
+        "title": "Swipe row actions and contextual menus for table rows",
+        "category": "Lists & collections",
+        "keySymbols": [
+          "NSTableViewRowAction",
+          "NSTableViewDelegate.tableView(_:rowActionsForRow:edge:)",
+          "NSTableView.clickedRow",
+          "NSTableView.menu"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "tableview-drag-drop-pasteboard-writer",
+        "title": "Table/collection drag-and-drop with pasteboard writers",
+        "category": "Drag & drop",
+        "keySymbols": [
+          "NSTableViewDataSource.tableView(_:pasteboardWriterForRow:)",
+          "NSPasteboardItem",
+          "NSTableViewDataSource.tableView(_:validateDrop:proposedRow:proposedDropOperation:)",
+          "NSTableViewDataSource.tableView(_:acceptDrop:row:dropOperation:)",
+          "NSTableView.registerForDraggedTypes(_:)",
+          "NSTableView.setDraggingSourceOperationMask(_:forLocal:)"
+        ],
+        "minMacOS": "26.0",
+        "priority": "high"
+      },
+      {
+        "id": "pasteboard-writing-reading-model",
+        "title": "Make a model draggable with NSPasteboardWriting/Reading",
+        "category": "Drag & drop",
+        "keySymbols": [
+          "NSPasteboardWriting",
+          "NSPasteboardReading",
+          "NSPasteboardItem",
+          "NSPasteboard.PasteboardType",
+          "NSPasteboardWriting.pasteboardPropertyList(forType:)",
+          "NSPasteboardReading.init(pasteboardPropertyList:ofType:)"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "begin-dragging-session-file-promise",
+        "title": "Custom drags with beginDraggingSession and NSFilePromiseProvider",
+        "category": "Drag & drop",
+        "keySymbols": [
+          "NSView.beginDraggingSession(with:event:source:)",
+          "NSDraggingItem",
+          "NSDraggingSource",
+          "NSFilePromiseProvider",
+          "NSFilePromiseProviderDelegate.filePromiseProvider(_:writePromiseTo:completionHandler:)"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "windowcontroller-content-viewcontroller",
+        "title": "Drive an NSWindow from an NSWindowController + content view controller",
+        "category": "Window & navigation",
+        "keySymbols": [
+          "NSWindowController",
+          "NSWindowController.contentViewController",
+          "NSWindow.contentViewController",
+          "NSWindowController.windowDidLoad()",
+          "NSViewController.viewDidLoad()"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "splitviewcontroller-sidebar-inspector",
+        "title": "Sidebar/content/inspector layout with NSSplitViewController",
+        "category": "Window & navigation",
+        "keySymbols": [
+          "NSSplitViewController",
+          "NSSplitViewItem(sidebarWithViewController:)",
+          "NSSplitViewItem(inspectorWithViewController:)",
+          "NSSplitViewController.toggleSidebar(_:)",
+          "NSSplitViewItem.isCollapsed",
+          "NSSplitViewItem.allowsFullHeightLayout"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "unified-toolbar-window-style",
+        "title": "Unified window toolbar with toolbarStyle + sidebar tracking separator",
+        "category": "Window & navigation",
+        "keySymbols": [
+          "NSWindow.toolbarStyle",
+          "NSWindow.ToolbarStyle.unified",
+          "NSToolbarItem.Identifier.sidebarTrackingSeparator",
+          "NSToolbarItem.Identifier.toggleSidebar",
+          "NSWindow.toolbar"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "toolbar-delegate-itemforidentifier",
+        "title": "Build customizable toolbar items via NSToolbarDelegate",
+        "category": "Window & navigation",
+        "keySymbols": [
+          "NSToolbarDelegate",
+          "NSToolbarDelegate.toolbar(_:itemForItemIdentifier:willBeInsertedIntoToolbar:)",
+          "NSToolbarDelegate.toolbarDefaultItemIdentifiers(_:)",
+          "NSToolbarItem.Identifier",
+          "NSToolbarItem.isNavigational"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "toolbar-grouped-menu-search-items",
+        "title": "Rich toolbar controls: group, menu, and search toolbar items",
+        "category": "Window & navigation",
+        "keySymbols": [
+          "NSToolbarItemGroup",
+          "NSToolbarItemGroup.controlRepresentation",
+          "NSMenuToolbarItem",
+          "NSSearchToolbarItem",
+          "NSTrackingSeparatorToolbarItem"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "tabviewcontroller-paged-panes",
+        "title": "Swap child panes with NSTabViewController",
+        "category": "Window & navigation",
+        "keySymbols": [
+          "NSTabViewController",
+          "NSTabViewController.tabStyle",
+          "NSTabViewController.TabStyle.toolbar",
+          "NSTabViewItem(viewController:)",
+          "NSTabViewController.addTabViewItem(_:)"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "present-viewcontroller-as-sheet",
+        "title": "Present and dismiss a view controller as a sheet",
+        "category": "Sheets, alerts & panels",
+        "keySymbols": [
+          "NSViewController.presentAsSheet(_:)",
+          "NSViewController.dismiss(_:)",
+          "NSViewController.presentAsModalWindow(_:)",
+          "NSWindow.beginSheet(_:)",
+          "NSWindow.endSheet(_:returnCode:)"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "nsalert-sheet-modal-async",
+        "title": "NSAlert as an async sheet with a suppression checkbox",
+        "category": "Sheets, alerts & panels",
+        "keySymbols": [
+          "NSAlert",
+          "NSAlert.beginSheetModal(for:)",
+          "NSAlert.addButton(withTitle:)",
+          "NSAlert.showsSuppressionButton",
+          "NSApplication.ModalResponse.alertFirstButtonReturn",
+          "NSAlert.accessoryView"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "open-save-panel-utype",
+        "title": "NSOpenPanel/NSSavePanel filtered by UTType content types",
+        "category": "Sheets, alerts & panels",
+        "keySymbols": [
+          "NSOpenPanel",
+          "NSSavePanel",
+          "NSSavePanel.beginSheetModal(for:)",
+          "NSSavePanel.allowedContentTypes",
+          "NSOpenPanel.canChooseDirectories",
+          "NSOpenPanel.allowsMultipleSelection",
+          "NSOpenPanel.urls"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "nspopover-transient",
+        "title": "Transient NSPopover anchored to a view with auto-dismiss",
+        "category": "Sheets, alerts & panels",
+        "keySymbols": [
+          "NSPopover",
+          "NSPopover.contentViewController",
+          "NSPopover.behavior",
+          "NSPopover.Behavior.transient",
+          "NSPopover.show(relativeTo:of:preferredEdge:)",
+          "NSPopover.performClose(_:)"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "nsmenu-dynamic-delegate",
+        "title": "Build menus lazily with NSMenuDelegate and pop up programmatically",
+        "category": "Sheets, alerts & panels",
+        "keySymbols": [
+          "NSMenu",
+          "NSMenuDelegate.menuNeedsUpdate(_:)",
+          "NSMenu.popUp(positioning:at:in:)",
+          "NSMenu.addItem(withTitle:action:keyEquivalent:)",
+          "NSMenuItem.submenu",
+          "NSMenu.autoenablesItems"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "sharing-service-picker",
+        "title": "Present a Share menu with NSSharingServicePicker",
+        "category": "Sheets, alerts & panels",
+        "keySymbols": [
+          "NSSharingServicePicker",
+          "NSSharingServicePicker.init(items:)",
+          "NSSharingServicePicker.show(relativeTo:of:preferredEdge:)",
+          "NSSharingServicePickerDelegate"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "app-entry-delegate-swift6",
+        "title": "AppKit @main entry point and NSApplicationDelegate under Swift 6",
+        "category": "App lifecycle",
+        "keySymbols": [
+          "NSApplicationDelegate",
+          "NSApplicationDelegate.applicationDidFinishLaunching(_:)",
+          "NSApplication.shared",
+          "NSApplication.delegate",
+          "@main"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "graceful-termination-reply",
+        "title": "Graceful quit with deferred applicationShouldTerminate reply",
+        "category": "App lifecycle",
+        "keySymbols": [
+          "NSApplicationDelegate.applicationShouldTerminate(_:)",
+          "NSApplication.TerminateReply.terminateLater",
+          "NSApplication.reply(toApplicationShouldTerminate:)",
+          "NSWindow.preventsApplicationTerminationWhenModal",
+          "NSApplicationDelegate.applicationShouldTerminateAfterLastWindowClosed(_:)"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "sudden-termination-optin",
+        "title": "Sudden termination opt-in and guarding deferred writes",
+        "category": "App lifecycle",
+        "keySymbols": [
+          "ProcessInfo.disableSuddenTermination()",
+          "ProcessInfo.enableSuddenTermination()",
+          "ProcessInfo.performActivity(options:reason:using:)",
+          "NSApplication.disableRelaunchOnLogin()"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "secure-state-restoration",
+        "title": "Secure state restoration: opt-in, encode, and restore UI state",
+        "category": "App lifecycle",
+        "keySymbols": [
+          "NSApplicationDelegate.applicationSupportsSecureRestorableState(_:)",
+          "NSResponder.encodeRestorableState(with:)",
+          "NSResponder.restoreState(with:)",
+          "NSResponder.invalidateRestorableState()",
+          "NSWindow.isRestorable"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "window-restoration-class",
+        "title": "Per-window restoration with NSWindowRestoration restoration classes",
+        "category": "App lifecycle",
+        "keySymbols": [
+          "NSWindowRestoration",
+          "NSWindowRestoration.restoreWindow(withIdentifier:state:completionHandler:)",
+          "NSWindow.restorationClass",
+          "NSWindow.identifier",
+          "NSUserInterfaceItemIdentifier"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "statusitem-menubar-extra",
+        "title": "Menu bar extra with NSStatusItem and a keyboard-triggerable button",
+        "category": "Status bar",
+        "keySymbols": [
+          "NSStatusBar.system",
+          "NSStatusBar.statusItem(withLength:)",
+          "NSStatusItem.button",
+          "NSStatusBarButton",
+          "NSStatusItem.menu",
+          "NSStatusItem.behavior"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "statusitem-expanded-interface-macos27",
+        "title": "macOS 27 NSStatusItem expanded interface session",
+        "category": "Status bar",
+        "keySymbols": [
+          "NSStatusItem.expandedInterfaceDelegate",
+          "NSStatusItemExpandedInterfaceDelegate",
+          "NSStatusItemExpandedInterfaceSession",
+          "NSStatusItemExpandedInterfaceSession.cancel()",
+          "NSStatusItem.expandedInterfaceSession"
+        ],
+        "minMacOS": "27.0",
+        "priority": "high"
+      },
+      {
+        "id": "textkit2-scrollable-textview",
+        "title": "TextKit 2 backed editable scrollable NSTextView",
+        "category": "Text",
+        "keySymbols": [
+          "NSTextView.scrollableTextView()",
+          "NSTextView.init(usingTextLayoutManager:)",
+          "NSTextLayoutManager",
+          "NSTextContentStorage",
+          "NSTextView.textLayoutManager"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "text-selection-manager-custom-view",
+        "title": "Text selection in a custom view with NSTextSelectionManager",
+        "category": "Text",
+        "keySymbols": [
+          "NSTextSelectionManager",
+          "NSTextSelectionManager.textSelectionDataSource",
+          "NSTextSelectionManager.textSelectionMode",
+          "NSTextSelectionDataSource",
+          "NSTextSelectionManager.delegate"
+        ],
+        "minMacOS": "27.0",
+        "priority": "high"
+      },
+      {
+        "id": "textfield-editing-delegate",
+        "title": "Observe NSTextField edits and commit via the delegate",
+        "category": "Text",
+        "keySymbols": [
+          "NSTextFieldDelegate",
+          "NSControlTextEditingDelegate.controlTextDidChange(_:)",
+          "NSControlTextEditingDelegate.controlTextDidEndEditing(_:)",
+          "NSControlTextEditingDelegate.control(_:textShouldEndEditing:)",
+          "NSControl.stringValue"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "textfield-label-and-formatter",
+        "title": "Labels vs editable fields and Formatter-validated input",
+        "category": "Text",
+        "keySymbols": [
+          "NSTextField.init(labelWithString:)",
+          "NSTextField.init(wrappingLabelWithString:)",
+          "NSControl.formatter",
+          "NSTextField.placeholderString",
+          "NSTextField.maximumNumberOfLines",
+          "NSTextField.objectValue"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "semantic-font-text-style",
+        "title": "Semantic text styles and system font designs",
+        "category": "Text",
+        "keySymbols": [
+          "NSFont.preferredFont(forTextStyle:options:)",
+          "NSFont.TextStyle",
+          "NSFont.systemFont(ofSize:weight:)",
+          "NSFontDescriptor.withDesign(_:)",
+          "NSFontDescriptor.SystemDesign.monospaced"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "writing-tools-coordinator",
+        "title": "Integrate Apple Writing Tools into a custom text view",
+        "category": "Text",
+        "keySymbols": [
+          "NSWritingToolsCoordinator",
+          "NSWritingToolsCoordinator.Delegate",
+          "NSTextView.writingToolsBehavior",
+          "NSTextView.isWritingToolsActive",
+          "NSWritingToolsBehavior"
+        ],
+        "minMacOS": "26.0",
+        "priority": "medium"
+      },
+      {
+        "id": "button-types-and-state",
+        "title": "Push, checkbox, radio, and tri-state buttons",
+        "category": "Controls",
+        "keySymbols": [
+          "NSButton.init(checkboxWithTitle:target:action:)",
+          "NSButton.init(radioButtonWithTitle:target:action:)",
+          "NSButton.setButtonType(_:)",
+          "NSButton.allowsMixedState",
+          "NSControl.StateValue.mixed",
+          "NSButton.state"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "popupbutton-population",
+        "title": "Populate and read selection from NSPopUpButton",
+        "category": "Controls",
+        "keySymbols": [
+          "NSPopUpButton.addItem(withTitle:)",
+          "NSPopUpButton.indexOfSelectedItem",
+          "NSPopUpButton.selectedItem",
+          "NSPopUpButton.pullsDown",
+          "NSMenuItem.representedObject"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "segmented-control",
+        "title": "Configure NSSegmentedControl segments and tracking mode",
+        "category": "Controls",
+        "keySymbols": [
+          "NSSegmentedControl.segmentCount",
+          "NSSegmentedControl.setLabel(_:forSegment:)",
+          "NSSegmentedControl.selectedSegment",
+          "NSSegmentedControl.trackingMode",
+          "NSSegmentedControl.SwitchTracking"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "switch-slider-stepper-values",
+        "title": "Read and bound NSSwitch, NSSlider, and NSStepper values",
+        "category": "Controls",
+        "keySymbols": [
+          "NSSwitch.state",
+          "NSSlider.minValue",
+          "NSSlider.maxValue",
+          "NSControl.doubleValue",
+          "NSStepper.increment",
+          "NSStepper.valueWraps",
+          "NSControl.isContinuous"
+        ],
+        "minMacOS": "",
+        "priority": "low"
+      },
+      {
+        "id": "semantic-nscolor-system-colors",
+        "title": "Semantic NSColor instead of hardcoded RGB",
+        "category": "Color & appearance",
+        "keySymbols": [
+          "NSColor.labelColor",
+          "NSColor.secondaryLabelColor",
+          "NSColor.controlAccentColor",
+          "NSColor.windowBackgroundColor",
+          "NSColor.controlBackgroundColor",
+          "NSColor.separatorColor"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "layer-color-effective-appearance",
+        "title": "Resolve dynamic NSColor to CGColor in the current appearance",
+        "category": "Color & appearance",
+        "keySymbols": [
+          "NSAppearanceCustomization.effectiveAppearance",
+          "NSAppearance.performAsCurrentDrawingAppearance(_:)",
+          "NSColor.cgColor",
+          "NSView.viewDidChangeEffectiveAppearance()",
+          "CALayer"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "high-contrast-display-options",
+        "title": "Adapt to high contrast, reduce motion, and reduce transparency",
+        "category": "Color & appearance",
+        "keySymbols": [
+          "NSWorkspace.accessibilityDisplayShouldIncreaseContrast",
+          "NSWorkspace.accessibilityDisplayShouldReduceMotion",
+          "NSWorkspace.accessibilityDisplayShouldReduceTransparency",
+          "NSWorkspace.accessibilityDisplayOptionsDidChangeNotification",
+          "NSAppearance.Name.accessibilityHighContrastAqua"
+        ],
+        "minMacOS": "",
+        "priority": "low"
+      },
+      {
+        "id": "accessibility-custom-view-element",
+        "title": "Expose a custom view as an accessibility element with role and label",
+        "category": "Accessibility",
+        "keySymbols": [
+          "NSAccessibilityProtocol.setAccessibilityElement(_:)",
+          "NSAccessibilityProtocol.setAccessibilityRole(_:)",
+          "NSAccessibilityProtocol.setAccessibilityLabel(_:)",
+          "NSAccessibility.Role.button",
+          "NSAccessibilityButton"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "accessibility-identifier-ui-testing",
+        "title": "Set accessibility identifiers for UI testing and automation",
+        "category": "Accessibility",
+        "keySymbols": [
+          "NSAccessibilityProtocol.setAccessibilityIdentifier(_:)",
+          "NSAccessibilityProtocol.accessibilityIdentifier()",
+          "NSView",
+          "NSControl"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "sfsymbols-symbol-configuration",
+        "title": "Load and configure SF Symbols with NSImage.SymbolConfiguration",
+        "category": "SF Symbols",
+        "keySymbols": [
+          "NSImage.init(systemSymbolName:accessibilityDescription:)",
+          "NSImage.SymbolConfiguration",
+          "NSImage.SymbolConfiguration.init(pointSize:weight:scale:)",
+          "NSImageView.contentTintColor",
+          "NSImage.SymbolConfiguration.preferringHierarchical()"
+        ],
+        "minMacOS": "",
+        "priority": "high"
+      },
+      {
+        "id": "sfsymbols-color-rendering-mode",
+        "title": "Render SF Symbols flat or gradient with SymbolColorRenderingMode",
+        "category": "SF Symbols",
+        "keySymbols": [
+          "NSImage.SymbolConfiguration.init(colorRenderingMode:)",
+          "NSImage.SymbolColorRenderingMode.gradient",
+          "NSImage.SymbolColorRenderingMode.flat",
+          "NSImage.SymbolConfiguration.preferringMulticolor()"
+        ],
+        "minMacOS": "26.0",
+        "priority": "medium"
+      },
+      {
+        "id": "nsdocument-data-architecture",
+        "title": "NSDocument subclass with data(ofType:)/read(from:ofType:)",
+        "category": "Documents",
+        "keySymbols": [
+          "NSDocument",
+          "NSDocument.data(ofType:)",
+          "NSDocument.read(from:ofType:)",
+          "NSDocument.fileWrapper(ofType:)",
+          "NSDocument.makeWindowControllers()",
+          "NSDocument.readableTypes"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      },
+      {
+        "id": "nsdocument-autosave-change-tracking",
+        "title": "Autosave-in-place and dirty-state tracking for documents",
+        "category": "Documents",
+        "keySymbols": [
+          "NSDocument.autosavesInPlace",
+          "NSDocument.updateChangeCount(_:)",
+          "NSDocument.ChangeType.changeDone",
+          "NSDocument.isDocumentEdited",
+          "NSDocument.canClose(withDelegate:shouldClose:contextInfo:)"
+        ],
+        "minMacOS": "",
+        "priority": "medium"
+      }
+    ],
+    "enginePlan": "SwiftPM PACKAGE (mirror appkit-api exactly: swift-tools-version 6.0, platforms [.macOS(.v13)], dependency swift-argument-parser from 1.5.0). Three targets: (1) `.target(name: \"AppKitSearchCore\", resources: [.process(\\\"Data\\\")])` \u2014 the testable engine library holding the BM25 port, tokenizer, stopwords, synonyms, Codable models, corpus loader, search/ranking logic, and JSON output DTOs; the curated corpus JSON lives in Sources/AppKitSearchCore/Data/*.json and is embedded via SwiftPM resources, read at startup with Bundle.module. (2) `.executableTarget(name: \\\"appkit-search\\\", dependencies: [\\\"AppKitSearchCore\\\", .product(name:\\\"ArgumentParser\\\",...)])` \u2014 the thin CLI: @main ParsableCommand with subcommands search/get/list (NO update verb; all live-fetch/cache/background machinery is dropped \u2014 single embedded corpus). (3) `.testTarget(name: \\\"AppKitSearchCoreTests\\\", dependencies: [\\\"AppKitSearchCore\\\"])` using Swift Testing (import Testing, @Test, #expect, #require).\\n\\nBM25 PORT (port BM25.cs 1:1). Constants k1=1.2, b=0.75. Doc = struct { tf: [String: Double]; length: Double }. Corpus = struct { df: [String: Int]; n: Int; avgDl: Double }. buildDoc(fields: [(text: String, weight: Double)]) accumulates tf[word] += weight and length += weight per token (the clever weighted-field design \u2014 NOT integer counts, reproduce verbatim). buildCorpus dedups df per doc with a Set (one df increment per distinct term per doc); avgDl = totalLen / max(n,1). score: for each query word with tf>0: idf = log((n - df + 0.5)/(df + 0.5) + 1) using Foundation.log (natural log = Math.Log base e; keep the Lucene +1 non-negativity guard); tfNorm = (tf*(k1+1)) / (tf + k1*(1 - b + b*(doc.length/corpus.avgDl))); score += idf*tfNorm. countHits(doc, tokens) returns how many raw tokens appear (for the coverage gate). Corpus is rebuilt per query over all ~38\u201345 docs (no persistent inverted index \u2014 fine at this size). Per-pattern doc fields and weights (the homogeneous-corpus retranslation of winui's field weights): keySymbols 5.0 (highest \u2014 author-curated APIs, the toolkit-keywords analog), tags 3.0, title 3.0, camelCase-split title 2.5 (built by a SplitCamelCase helper, fed as a separate field), summary 1.0, id 1.0. After BM25, apply the multiplicative name boosts against CompactQuery (lowercased, [^a-z0-9] stripped): whole-word title match x2.0, longest-compact-compound x4.0 / non-longest x1.3, >=6-char substring-in-compact-title x2.5; generic-title demotion x0.85; +0.1 Basic/Simple tie nudge. Drop the source-intent (wantsToolkit x1.6) boost entirely. Add a platform-keyword reverse map (e.g. glass/concentric/sidebar/drag/picker -> specific pattern id) applying x1.6, with the same 'real match' demotion guard. Single corpus => no '{source}:{controlId}' composite key, no nested per-scenario BM25 pass (corpus is flat: one doc per pattern); the result list is just ranked patterns. Relevance floor: runners-up need >=70% of the top score (top-1 always kept). Coverage gate: built from RAW tokens (Tokenize(query).distinct, NOT preprocessed/expanded \u2014 this subtlety is preserved); if >=3 raw tokens, a pattern must hit >=ceil(N/2) unless name-boosted.\\n\\nTOKENIZER (port BM25.Tokenize order exactly): (1) lowercase with a fixed/invariant lowercasing \u2014 use `text.lowercased()` but be deliberate about locale to match ToLowerInvariant and avoid the Turkish-i problem (lowercase against a fixed locale, e.g. via `Locale(identifier:\\\"en_US_POSIX\\\")` aware folding or ASCII-only handling). (2) regex replace the SAME char class [^a-z0-9\\\\s\\\\-] -> ' ' (hyphens preserved inside tokens) via NSRegularExpression or Swift Regex. (3) split on the ASCII space ' ' only, dropping empty entries. (4) keep word only if word.count > 1 AND not in StopWords.common. No stemming inside tokenize. Provide compactQuery (lowercase + strip [^a-z0-9]) and splitCamelCase helpers as separate functions.\\n\\nSTOPWORDS + SYNONYMS (keep as data; these ARE search quality). Port StopWords.Common verbatim (~180 words) as the hot-path query+index stoplist; TagOnly can be folded or kept the same way for tag cleaning (FilterTagList drops Common+TagOnly and *sample suffixes when loading the tags field). Synonyms is a three-mechanism, two-stage pipeline ported verbatim in mechanism but RETRANSLATED in data for AppKit: Stage 1 Preprocess(query) (runs first, APPENDS tokens): Phrases dict (multi-word UI phrases -> merged token, retranslated to Mac phrasings e.g. 'split view'->'splitviewcontroller', 'color well'->'nscolorwell', 'menu bar'->'statusitem', 'glass effect'->'nsglasseffectview', 'open panel'->'nsopenpanel'); Stem() suffix-stripping (-s/-ed/-ing with doubled-consonant and silent-e candidate variants); StemExceptions for irregulars. Stage 2 Expand(tokens) (runs AFTER tokenize, before scoring, APPENDS deduped synonyms): Map (~cross-framework/UIKit/SwiftUI vocab -> AppKit class names, e.g. modal->[nsalert,sheet,nspopover], table/datagrid->[nstableview,nsoutlineview], sidebar->[nssplitviewcontroller,nssplitviewitem], fab/button->[nsbutton], tray/menulet->[nsstatusitem], picker->[nsopenpanel,nssavepanel,nspopupbutton], textview->[nstextview,textkit], a11y->[accessibility,voiceover], blur/vibrancy->[nsvisualeffectview], glass->[nsglasseffectview]), with the compound-suffix guard (skip expanding a bare token when a longer compound ending in it is already present). PIPELINE ORDER from search: raw -> Preprocess -> Tokenize -> Expand -> Score, while the coverage gate uses the raw Tokenize output only.\\n\\nCORPUS EMBED/LOAD. Codable struct Pattern mirrors the corpusSchema (id,title,summary,category,keySymbols,tags,minMacOS?,swiftCode,imports,pitfalls?,related?,replaces?). The corpus is one or a few JSON arrays in Sources/AppKitSearchCore/Data/ (e.g. patterns.json, optionally tags.json/synonyms.json if curated separately); a Corpus loader reads via Bundle.module.url(forResource:withExtension:), JSONDecoder-decodes once into [Pattern], builds the lookup-by-id dictionary, and exposes a deterministic ordering. No network, no cache, no TTL.\\n\\nCLI VERBS (JSON output via emitJSON with [.prettyPrinted,.sortedKeys,.withoutEscapingSlashes], matching appkit-api). `search <query...> [--max N=5] [--category C]`: runs the full pipeline, returns ranked patterns after floor+coverage gate as JSON { query, results: [{ id, title, category, summary, minMacOS?, score }] } (compact, agent-token-friendly; code is NOT included \u2014 a hint field tells the agent to call get). Each separately quoted arg is a distinct batch query (positional words of one query are joined); batch returns { queries:[{query,results}] } with cross-query dedup. `get <id...>` (1..N ids, skill convention <=3): returns the full pattern(s) as JSON { id, title, summary, minMacOS, imports, keySymbols, swiftCode (NormalizeIndent-remapped, boilerplate-stub suppression like IsBoilerplatePageWrapper for empty NSViewController/awakeFromNib), pitfalls, related, replaces }; exit 1 if any id not found. `list [--category C]`: returns all patterns grouped by category as JSON { categories:[{category, patterns:[{id,title,minMacOS?}]}] }. A `debug <query>` verb is optional-but-recommended (Preprocessed/Tokens/Expanded/top-N-no-floor scores) as the tuning aid for the AppKit Map/Phrases. Validate --category against the known set.\\n\\nSWIFT TESTING. Unit-test three layers like appkit-api's *Tests with @Test functions: (1) Tokenization \u2014 lowercasing/invariant-locale, [^a-z0-9\\\\s\\\\-] stripping with hyphen preservation, space-split, len>1 + stopword filter, compactQuery, splitCamelCase ('NSGlassEffectView'->NS Glass Effect View), and the Preprocess->Tokenize->Expand pipeline order incl. the compound-suffix guard and synonym retranslation (e.g. 'sidebar' expands to splitviewcontroller terms). (2) BM25 scoring/ranking \u2014 buildDoc weighted-tf accumulation, buildCorpus df dedup + avgDl, the exact idf/tfNorm formula on a tiny fixed corpus (assert numeric scores against hand-computed values to lock the +1 IDF and k1/b), countHits, name-boost multipliers, generic-title demotion, the 70% relevance floor, the coverage gate using RAW tokens, and end-to-end ranking assertions (e.g. query 'concentric corners' ranks concentric-corner-configuration first; 'glass' surfaces glass-effect-view-basic; 'mouse down' via tags/replaces surfaces gesture-recognizers-basics). (3) Corpus integrity \u2014 decode the embedded Data/*.json, assert unique kebab-case ids, every pattern has non-empty title/summary/keySymbols/tags/swiftCode/imports, related[] ids resolve to existing patterns, category values are within the known set, and minMacOS values parse, guarding the curated corpus against authoring drift."
+  }
+}
