@@ -25,6 +25,7 @@ import Foundation
 // a JSON boolean from a JSON number, so trying Bool first is safe and exact.
 // --------------------------------------------------------------------------- //
 
+/// A recursively-typed JSON value for genuinely-dynamic transcript payloads.
 indirect enum JSONValue: Decodable {
     case null
     case bool(Bool)
@@ -35,66 +36,71 @@ indirect enum JSONValue: Decodable {
     case object([String: JSONValue])
 
     init(from decoder: Decoder) throws {
-        let c = try decoder.singleValueContainer()
-        if c.decodeNil() {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
             self = .null
-        } else if let b = try? c.decode(Bool.self) {
-            self = .bool(b)
-        } else if let i = try? c.decode(Int.self) {
-            self = .int(i)
-        } else if let d = try? c.decode(Double.self) {
-            self = .double(d)
-        } else if let s = try? c.decode(String.self) {
-            self = .string(s)
-        } else if let a = try? c.decode([JSONValue].self) {
-            self = .array(a)
-        } else if let o = try? c.decode([String: JSONValue].self) {
-            self = .object(o)
+        } else if let bool = try? container.decode(Bool.self) {
+            self = .bool(bool)
+        } else if let int = try? container.decode(Int.self) {
+            self = .int(int)
+        } else if let double = try? container.decode(Double.self) {
+            self = .double(double)
+        } else if let string = try? container.decode(String.self) {
+            self = .string(string)
+        } else if let array = try? container.decode([JSONValue].self) {
+            self = .array(array)
+        } else if let object = try? container.decode([String: JSONValue].self) {
+            self = .object(object)
         } else {
             throw DecodingError.dataCorruptedError(
-                in: c, debugDescription: "Unsupported JSON value")
+                in: container, debugDescription: "Unsupported JSON value")
         }
     }
 
-    // The genuine string value, or nil for any non-string.
+    /// The wrapped string, or `nil` for any non-string value.
     var stringValue: String? {
-        if case let .string(s) = self { return s }
+        if case let .string(string) = self { return string }
         return nil
     }
 
-    // Object/array member access; nil for non-containers or missing keys.
+    /// The member value for `key`; `nil` for non-objects or missing keys.
     subscript(_ key: String) -> JSONValue? {
-        if case let .object(o) = self { return o[key] }
+        if case let .object(object) = self { return object[key] }
         return nil
     }
 
+    /// A Boolean value indicating whether this is the JSON null.
     var isNull: Bool {
         if case .null = self { return true }
         return false
     }
 
+    /// The wrapped object, or `nil` for non-objects.
     var objectValue: [String: JSONValue]? {
-        if case let .object(o) = self { return o }
+        if case let .object(object) = self { return object }
         return nil
     }
 
+    /// The wrapped array, or `nil` for non-arrays.
     var arrayValue: [JSONValue]? {
-        if case let .array(a) = self { return a }
+        if case let .array(array) = self { return array }
         return nil
     }
 
-    // Python str(x) over a JSON value reachable from a dict. None -> "None",
-    // strings pass through, everything else uses a repr-ish form. Used for ids
-    // and skill/agent names where Python applies str().
-    var pyStr: String {
+    /// The Python `str(x)` rendering of this value reachable from a dict.
+    ///
+    /// Null renders as `"None"`, strings pass through, and everything else uses
+    /// a repr-ish form. Used for ids and skill/agent names where Python applies
+    /// `str()`.
+    var pythonString: String {
         switch self {
         case .null: return "None"
-        case let .bool(b): return b ? "True" : "False"
-        case let .int(i): return String(i)
-        case let .double(d): return "\(d)"
-        case let .string(s): return s
-        case let .array(a): return "\(a)"
-        case let .object(o): return "\(o)"
+        case let .bool(bool): return bool ? "True" : "False"
+        case let .int(int): return String(int)
+        case let .double(double): return "\(double)"
+        case let .string(string): return string
+        case let .array(array): return "\(array)"
+        case let .object(object): return "\(object)"
         }
     }
 }
@@ -104,37 +110,38 @@ indirect enum JSONValue: Decodable {
 // catch-all so unknown block types are tolerated (forward-compat).
 // --------------------------------------------------------------------------- //
 
+/// A single message content block, decoded on its `type` discriminator.
 enum ContentBlock: Decodable {
     case text(String)
     case toolUse(id: JSONValue?, name: String?, input: JSONValue)
-    case toolResult(toolUseId: JSONValue?, content: JSONValue?, isError: Truthy)
+    case toolResult(toolUseID: JSONValue?, content: JSONValue?, isError: Truthy)
     case thinking
     case other(String)
 
     private enum CodingKeys: String, CodingKey {
         case type, text, id, name, input
-        case toolUseId = "tool_use_id"
+        case toolUseID = "tool_use_id"
         case content
         case isError = "is_error"
     }
 
     init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        let type = (try? c.decode(String.self, forKey: .type)) ?? ""
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = (try? container.decode(String.self, forKey: .type)) ?? ""
         switch type {
         case "text":
-            let t = (try? c.decode(String.self, forKey: .text)) ?? ""
-            self = .text(t)
+            let text = (try? container.decode(String.self, forKey: .text)) ?? ""
+            self = .text(text)
         case "tool_use":
-            let id = try? c.decode(JSONValue.self, forKey: .id)
-            let name = try? c.decode(String.self, forKey: .name)
-            let input = (try? c.decode(JSONValue.self, forKey: .input)) ?? .object([:])
+            let id = try? container.decode(JSONValue.self, forKey: .id)
+            let name = try? container.decode(String.self, forKey: .name)
+            let input = (try? container.decode(JSONValue.self, forKey: .input)) ?? .object([:])
             self = .toolUse(id: id, name: name, input: input)
         case "tool_result":
-            let tid = try? c.decode(JSONValue.self, forKey: .toolUseId)
-            let content = try? c.decode(JSONValue.self, forKey: .content)
-            let isErr = (try? c.decode(Truthy.self, forKey: .isError)) ?? Truthy(false)
-            self = .toolResult(toolUseId: tid, content: content, isError: isErr)
+            let toolUseID = try? container.decode(JSONValue.self, forKey: .toolUseID)
+            let content = try? container.decode(JSONValue.self, forKey: .content)
+            let isError = (try? container.decode(Truthy.self, forKey: .isError)) ?? Truthy(false)
+            self = .toolResult(toolUseID: toolUseID, content: content, isError: isError)
         case "thinking":
             self = .thinking
         default:
@@ -149,19 +156,20 @@ enum ContentBlock: Decodable {
 // Bool from Int, so this is simpler than the NSNumber-or-Bool double-check.
 // --------------------------------------------------------------------------- //
 
+/// A lenient Boolean mirroring Python's `if obj.get(x)` truthiness over bool, number, or null.
 struct Truthy: Decodable {
     let value: Bool
-    init(_ v: Bool) { self.value = v }
+    init(_ value: Bool) { self.value = value }
     init(from decoder: Decoder) throws {
-        let c = try decoder.singleValueContainer()
-        if c.decodeNil() {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
             value = false
-        } else if let b = try? c.decode(Bool.self) {
-            value = b
-        } else if let i = try? c.decode(Int.self) {
-            value = i != 0
-        } else if let d = try? c.decode(Double.self) {
-            value = d != 0
+        } else if let bool = try? container.decode(Bool.self) {
+            value = bool
+        } else if let int = try? container.decode(Int.self) {
+            value = int != 0
+        } else if let double = try? container.decode(Double.self) {
+            value = double != 0
         } else {
             value = false
         }
@@ -173,28 +181,31 @@ struct Truthy: Decodable {
 // Custom decode tries the array form first, then the string form.
 // --------------------------------------------------------------------------- //
 
+/// A message's `content`, which is either a JSON string or an array of blocks.
 enum MessageContent: Decodable {
     case string(String)
     case array([ContentBlock])
 
     init(from decoder: Decoder) throws {
-        let c = try decoder.singleValueContainer()
-        if let arr = try? c.decode([ContentBlock].self) {
-            self = .array(arr)
-        } else if let s = try? c.decode(String.self) {
-            self = .string(s)
+        let container = try decoder.singleValueContainer()
+        if let blocks = try? container.decode([ContentBlock].self) {
+            self = .array(blocks)
+        } else if let string = try? container.decode(String.self) {
+            self = .string(string)
         } else {
             self = .string("")
         }
     }
 
+    /// The wrapped string, or `nil` for the array form.
     var stringValue: String? {
-        if case let .string(s) = self { return s }
+        if case let .string(string) = self { return string }
         return nil
     }
 
+    /// The wrapped block array, or `nil` for the string form.
     var arrayValue: [ContentBlock]? {
-        if case let .array(a) = self { return a }
+        if case let .array(blocks) = self { return blocks }
         return nil
     }
 }
@@ -205,26 +216,42 @@ enum MessageContent: Decodable {
 // optional fields tolerate absence. CodingKeys map the snake_case JSON.
 // --------------------------------------------------------------------------- //
 
+/// Token-usage counters attached to an assistant message.
 struct Usage: Decodable {
-    let output_tokens: Int?
-    let cache_read_input_tokens: Int?
-    let cache_creation_input_tokens: Int?
+    let outputTokens: Int?
+    let cacheReadInputTokens: Int?
+    let cacheCreationInputTokens: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case outputTokens = "output_tokens"
+        case cacheReadInputTokens = "cache_read_input_tokens"
+        case cacheCreationInputTokens = "cache_creation_input_tokens"
+    }
 }
 
+/// A single message envelope: model, usage, and content.
 struct Message: Decodable {
     let model: String?
     let usage: Usage?
     let content: MessageContent?
 }
 
+/// One transcript line: an event envelope with its message and metadata.
 struct Event: Decodable {
     let type: String?
-    let sessionId: String?
+    let sessionID: String?
     let timestamp: String?
-    let cwd: CwdString?
+    let cwd: WorkingDirectory?
     let isMeta: Truthy?
     let isSidechain: Truthy?
     let message: Message?
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case sessionID = "sessionId"
+        case timestamp, cwd
+        case isMeta, isSidechain, message
+    }
 }
 
 // cwd: Python keeps a non-empty string as-is, else str()s a truthy non-null
@@ -232,21 +259,24 @@ struct Event: Decodable {
 // the field itself is optional in Event; but a present JSON null still needs to
 // be distinguishable from a string, so we decode through a wrapper that records
 // whether the underlying value was a usable string or a stringified other.
-struct CwdString: Decodable {
+
+/// An event's `cwd`, resolved per Python's lenient working-directory semantics.
+struct WorkingDirectory: Decodable {
     let raw: JSONValue
     init(from decoder: Decoder) throws {
         raw = try JSONValue(from: decoder)
     }
-    // The cwd resolved per Python firstCwd semantics: non-empty string, or the
-    // str() of a truthy non-null value; nil otherwise.
+
+    /// The working directory per Python `firstCwd` semantics: a non-empty
+    /// string, or the `str()` of a truthy non-null value; `nil` otherwise.
     var resolved: String? {
         switch raw {
         case .null:
             return nil
-        case let .string(s):
-            return s.isEmpty ? nil : s
+        case let .string(string):
+            return string.isEmpty ? nil : string
         default:
-            return raw.pyStr
+            return raw.pythonString
         }
     }
 }
@@ -255,24 +285,30 @@ struct CwdString: Decodable {
 // Number formatting — match Python f"{n:,}" and f"{round(x,1)}".
 // --------------------------------------------------------------------------- //
 
-func grouped(_ n: Int) -> String {
-    let neg = n < 0
-    var s = String(abs(n))
-    var out = ""
-    var count = 0
-    for ch in s.reversed() {
-        if count != 0 && count % 3 == 0 { out.append(",") }
-        out.append(ch)
-        count += 1
+extension Int {
+    /// This integer formatted with thousands separators, like Python `f"{n:,}"`.
+    var groupedDigits: String {
+        let isNegative = self < 0
+        var digits = ""
+        var count = 0
+        for character in String(abs(self)).reversed() {
+            if count != 0 && count % 3 == 0 { digits.append(",") }
+            digits.append(character)
+            count += 1
+        }
+        digits = String(digits.reversed())
+        return isNegative ? "-" + digits : digits
     }
-    s = String(out.reversed())
-    return neg ? "-" + s : s
 }
 
-// f"{round(x,1)}" is byte-identical to f"{x:.1f}" for these ranges (both
-// correctly-rounded, round-half-to-even via the C library).
-func dur(_ x: Double) -> String {
-    return String(format: "%.1f", x)
+extension Double {
+    // f"{round(x,1)}" is byte-identical to f"{x:.1f}" for these ranges (both
+    // correctly-rounded, round-half-to-even via the C library).
+
+    /// This value formatted to one decimal place, like Python `f"{round(x,1)}"`.
+    var minutesString: String {
+        String(format: "%.1f", self)
+    }
 }
 
 // --------------------------------------------------------------------------- //
@@ -281,58 +317,66 @@ func dur(_ x: Double) -> String {
 
 let jsonDecoder = JSONDecoder()
 
-// Decode a single transcript line into an Event; nil if the line is not a JSON
-// object that decodes (per-line robustness: a bad line is skipped, not fatal).
-func decodeEvent(_ line: String) -> Event? {
-    guard let d = line.data(using: .utf8) else { return nil }
-    return try? jsonDecoder.decode(Event.self, from: d)
+extension String {
+    /// The event decoded from this transcript line, or `nil` if it is not a
+    /// JSON object that decodes.
+    ///
+    /// Per-line robustness: a bad line is skipped, not fatal.
+    var decodedEvent: Event? {
+        guard let data = data(using: .utf8) else { return nil }
+        return try? jsonDecoder.decode(Event.self, from: data)
+    }
 }
 
 // --------------------------------------------------------------------------- //
 // Locating the transcript
 // --------------------------------------------------------------------------- //
 
+/// The `~/.claude/projects` root that holds every session transcript.
 func projectsRoot() -> URL {
     let home = FileManager.default.homeDirectoryForCurrentUser
     return home.appendingPathComponent(".claude").appendingPathComponent("projects")
 }
 
-func readJsonl(_ path: URL) -> [Event] {
+/// Reads the transcript at `path` into its decoded events, skipping bad lines.
+func readJSONL(_ path: URL) -> [Event] {
     var events: [Event] = []
-    guard let data = try? String(contentsOf: path, encoding: .utf8) else { return events }
-    for rawLine in data.split(separator: "\n", omittingEmptySubsequences: false) {
+    guard let contents = try? String(contentsOf: path, encoding: .utf8) else { return events }
+    for rawLine in contents.split(separator: "\n", omittingEmptySubsequences: false) {
         let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
         if line.isEmpty { continue }
-        if let ev = decodeEvent(line) {
-            events.append(ev)
+        if let event = line.decodedEvent {
+            events.append(event)
         }
     }
     return events
 }
 
+/// Returns the working directory recorded in the transcript's first 50 lines.
 func firstCwd(_ path: URL) -> String? {
-    guard let content = try? String(contentsOf: path, encoding: .utf8) else { return nil }
-    var i = 0
-    for rawLine in content.split(separator: "\n", omittingEmptySubsequences: false) {
-        if i > 50 { break }
+    guard let contents = try? String(contentsOf: path, encoding: .utf8) else { return nil }
+    var lineIndex = 0
+    for rawLine in contents.split(separator: "\n", omittingEmptySubsequences: false) {
+        if lineIndex > 50 { break }
         let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-        i += 1
+        lineIndex += 1
         if line.isEmpty { continue }
-        guard let ev = decodeEvent(line) else { continue }
-        if let resolved = ev.cwd?.resolved {
+        guard let event = line.decodedEvent else { continue }
+        if let resolved = event.cwd?.resolved {
             return resolved
         }
     }
     return nil
 }
 
-func findSessionById(_ sid: String) -> URL? {
+/// Finds the transcript file for `sessionID`, excluding subagent transcripts.
+func findSession(byID sessionID: String) -> URL? {
     let root = projectsRoot()
-    let fm = FileManager.default
-    if !fm.fileExists(atPath: root.path) { return nil }
-    guard let en = fm.enumerator(at: root, includingPropertiesForKeys: nil) else { return nil }
-    for case let url as URL in en {
-        if url.lastPathComponent == "\(sid).jsonl" {
+    let fileManager = FileManager.default
+    if !fileManager.fileExists(atPath: root.path) { return nil }
+    guard let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: nil) else { return nil }
+    for case let url as URL in enumerator {
+        if url.lastPathComponent == "\(sessionID).jsonl" {
             if url.deletingLastPathComponent().lastPathComponent != "subagents" {
                 return url
             }
@@ -341,13 +385,15 @@ func findSessionById(_ sid: String) -> URL? {
     return nil
 }
 
-func findLatestSession(preferCwd: String?) -> URL? {
+/// Finds the most-recently-modified session transcript, preferring one whose
+/// working directory matches `preferredCwd`.
+func findLatestSession(preferredCwd: String?) -> URL? {
     let root = projectsRoot()
-    let fm = FileManager.default
-    if !fm.fileExists(atPath: root.path) { return nil }
-    guard let en = fm.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey]) else { return nil }
+    let fileManager = FileManager.default
+    if !fileManager.fileExists(atPath: root.path) { return nil }
+    guard let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey]) else { return nil }
     var candidates: [URL] = []
-    for case let url as URL in en {
+    for case let url as URL in enumerator {
         guard url.pathExtension == "jsonl" else { continue }
         let parent = url.deletingLastPathComponent()
         if parent.lastPathComponent == "subagents" { continue }
@@ -355,26 +401,29 @@ func findLatestSession(preferCwd: String?) -> URL? {
         candidates.append(url)
     }
     if candidates.isEmpty { return nil }
-    func mtime(_ u: URL) -> TimeInterval {
-        let v = try? u.resourceValues(forKeys: [.contentModificationDateKey])
-        return v?.contentModificationDate?.timeIntervalSince1970 ?? 0
+    func modificationTime(_ url: URL) -> TimeInterval {
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+        return values?.contentModificationDate?.timeIntervalSince1970 ?? 0
     }
-    candidates.sort { mtime($0) > mtime($1) }
-    if let prefer = preferCwd {
-        let want = rstripSlash(prefer)
-        for c in candidates {
-            if let fc = firstCwd(c), rstripSlash(fc) == want {
-                return c
+    candidates.sort { modificationTime($0) > modificationTime($1) }
+    if let preferredCwd = preferredCwd {
+        let wanted = preferredCwd.trimmingTrailingSlashes
+        for candidate in candidates {
+            if let cwd = firstCwd(candidate), cwd.trimmingTrailingSlashes == wanted {
+                return candidate
             }
         }
     }
     return candidates[0]
 }
 
-func rstripSlash(_ s: String) -> String {
-    var t = Substring(s)
-    while t.hasSuffix("/") { t = t.dropLast() }
-    return String(t)
+extension String {
+    /// This string with any trailing `/` characters removed.
+    var trimmingTrailingSlashes: String {
+        var slice = Substring(self)
+        while slice.hasSuffix("/") { slice = slice.dropLast() }
+        return String(slice)
+    }
 }
 
 // --------------------------------------------------------------------------- //
@@ -388,8 +437,11 @@ let toolNameMap: [String: String] = [
     "NotebookEdit": "edit", "TodoWrite": "todo", "AskUserQuestion": "ask_user",
 ]
 
-func normTool(_ name: String) -> String {
-    return toolNameMap[name] ?? name.lowercased()
+extension String {
+    /// This tool name mapped to its canonical short form, lowercased otherwise.
+    var normalizedToolName: String {
+        toolNameMap[self] ?? lowercased()
+    }
 }
 
 // --------------------------------------------------------------------------- //
@@ -400,139 +452,147 @@ func normTool(_ name: String) -> String {
 // categorization regexes are namespaced together in `enum Patterns`, defined
 // below near the categorization logic.
 
-// "Does this regex match anywhere in s?" — unanchored, mirroring re.search().
-func regexSearch(_ re: some RegexComponent, _ s: String) -> Bool {
-    return s.contains(re)
-}
+extension String {
+    /// This string truncated to its first `limit` Unicode code points, like
+    /// Python `s[:limit]`.
+    func truncated(to limit: Int) -> String {
+        if count <= limit { return self }
+        return String(prefix(limit))
+    }
 
-// Python: s[:n] over Unicode code points; truncate at n characters.
-func prefixChars(_ s: String, _ n: Int) -> String {
-    if s.count <= n { return s }
-    return String(s.prefix(n))
-}
-
-func errorSummary(_ text: String?) -> (Bool, [String]) {
-    guard let text = text, !text.isEmpty else { return (false, []) }
-    if !regexSearch(Patterns.errorTrigger, text) { return (false, []) }
-    var out: [String] = []
-    // Python str.splitlines() splits on a broader set of boundaries.
-    for line in splitLines(text) {
-        let s = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !regexSearch(Patterns.errorTrigger, s) { continue }
-        if let m = s.firstMatch(of: #/error:\s*(.+)/#) {
-            let g = String(m.1)   // capture group 1, mirrors re.search(...).group(1)
-            out.append(prefixChars(g.trimmingCharacters(in: .whitespacesAndNewlines), 140))
-        } else if s.contains("BUILD FAILED") {
-            out.append("** BUILD FAILED **")
-        } else if let m0 = s.firstMatch(of: #/Command (\S+) failed/#) {
-            out.append(String(m0.0))   // whole match, mirrors re.search(...).group(0)
-        } else if s.contains("linker command failed") {
-            out.append("linker command failed")
-        } else {
-            out.append(prefixChars(s, 140))
+    /// This string split on Python `str.splitlines()` boundaries.
+    ///
+    /// Splits on `\n`, `\r`, `\r\n`, and several Unicode line boundaries.
+    var pythonLines: [String] {
+        var result: [String] = []
+        var current = ""
+        let scalars = Array(unicodeScalars)
+        var index = 0
+        let breaks: Set<UInt32> = [0x0A, 0x0B, 0x0C, 0x0D, 0x1C, 0x1D, 0x1E, 0x85, 0x2028, 0x2029]
+        while index < scalars.count {
+            let scalar = scalars[index]
+            if breaks.contains(scalar.value) {
+                // Handle CRLF as a single break.
+                if scalar.value == 0x0D && index + 1 < scalars.count && scalars[index + 1].value == 0x0A {
+                    index += 1
+                }
+                result.append(current)
+                current = ""
+            } else {
+                current.unicodeScalars.append(scalar)
+            }
+            index += 1
         }
-        if out.count >= 5 { break }
+        if !current.isEmpty {
+            result.append(current)
+        }
+        return result
+    }
+}
+
+
+/// A non-empty error flag paired with up to five de-duplicated error lines
+/// extracted from tool output `text`.
+func errorSummary(_ text: String?) -> (isError: Bool, lines: [String]) {
+    guard let text = text, !text.isEmpty else { return (false, []) }
+    if !text.contains(Patterns.errorTrigger) { return (false, []) }
+    var summaries: [String] = []
+    // Python str.splitlines() splits on a broader set of boundaries.
+    for rawLine in text.pythonLines {
+        let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !line.contains(Patterns.errorTrigger) { continue }
+        if let match = line.firstMatch(of: #/error:\s*(.+)/#) {
+            let captured = String(match.1)   // capture group 1, mirrors re.search(...).group(1)
+            summaries.append(captured.trimmingCharacters(in: .whitespacesAndNewlines).truncated(to: 140))
+        } else if line.contains("BUILD FAILED") {
+            summaries.append("** BUILD FAILED **")
+        } else if let match = line.firstMatch(of: #/Command (\S+) failed/#) {
+            summaries.append(String(match.0))   // whole match, mirrors re.search(...).group(0)
+        } else if line.contains("linker command failed") {
+            summaries.append("linker command failed")
+        } else {
+            summaries.append(line.truncated(to: 140))
+        }
+        if summaries.count >= 5 { break }
     }
     // de-dupe preserving order
     var seen = Set<String>()
-    var uniq: [String] = []
-    for e in out {
-        if !seen.contains(e) { seen.insert(e); uniq.append(e) }
+    var unique: [String] = []
+    for summary in summaries {
+        if !seen.contains(summary) { seen.insert(summary); unique.append(summary) }
     }
-    return (true, uniq)
-}
-
-// Python str.splitlines(): split on \n \r \r\n and several unicode line boundaries.
-func splitLines(_ s: String) -> [String] {
-    var result: [String] = []
-    var current = ""
-    let chars = Array(s.unicodeScalars)
-    var i = 0
-    let breaks: Set<UInt32> = [0x0A, 0x0B, 0x0C, 0x0D, 0x1C, 0x1D, 0x1E, 0x85, 0x2028, 0x2029]
-    while i < chars.count {
-        let c = chars[i]
-        if breaks.contains(c.value) {
-            // Handle CRLF as a single break.
-            if c.value == 0x0D && i + 1 < chars.count && chars[i + 1].value == 0x0A {
-                i += 1
-            }
-            result.append(current)
-            current = ""
-        } else {
-            current.unicodeScalars.append(c)
-        }
-        i += 1
-    }
-    if !current.isEmpty {
-        result.append(current)
-    }
-    return result
+    return (true, unique)
 }
 
 // --------------------------------------------------------------------------- //
 // Parsing
 // --------------------------------------------------------------------------- //
 
+/// Returns the first genuine user prompt from `events`, or a placeholder.
 func extractPrompt(_ events: [Event]) -> String {
-    for ev in events {
-        if ev.type != "user" { continue }
-        if ev.isMeta?.value == true { continue }
-        if ev.isSidechain?.value == true { continue }
-        let content = ev.message?.content
-        var cand: String? = nil
-        if let s = content?.stringValue {
-            cand = s
-        } else if let arr = content?.arrayValue {
-            let hasToolResult = arr.contains { if case .toolResult = $0 { return true } else { return false } }
+    for event in events {
+        if event.type != "user" { continue }
+        if event.isMeta?.value == true { continue }
+        if event.isSidechain?.value == true { continue }
+        let content = event.message?.content
+        var candidate: String? = nil
+        if let string = content?.stringValue {
+            candidate = string
+        } else if let blocks = content?.arrayValue {
+            let hasToolResult = blocks.contains { if case .toolResult = $0 { return true } else { return false } }
             var texts: [String] = []
-            for b in arr {
-                if case let .text(t) = b {
-                    texts.append(t)
+            for block in blocks {
+                if case let .text(text) = block {
+                    texts.append(text)
                 }
             }
             if !hasToolResult && !texts.isEmpty {
-                cand = texts.joined(separator: "\n")
+                candidate = texts.joined(separator: "\n")
             }
         }
-        guard let c = cand, !c.isEmpty else { continue }
-        let s = c.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let candidate = candidate, !candidate.isEmpty else { continue }
+        let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
         // Anchored at ^, so a "match anywhere" via .contains is still start-anchored.
-        if s.contains(#/^<(local-)?command-(name|message|args|stdout)>/#) { continue }
-        if s.hasPrefix("<local-command-caveat>") { continue }
-        return c
+        if trimmed.contains(#/^<(local-)?command-(name|message|args|stdout)>/#) { continue }
+        if trimmed.hasPrefix("<local-command-caveat>") { continue }
+        return candidate
     }
     return "(no prompt found)"
 }
 
+/// A single tool invocation within a turn.
 struct Tool {
     var name: String
     var args: JSONValue   // the tool_use `input` object (or .object([:]))
-    var error: Bool
-    var errs: [String]
+    var isError: Bool
+    var errors: [String]
 }
 
+/// One assistant turn: its tool calls, token usage, and classification.
 final class Turn {
-    var n: Int
+    var number: Int
     var tools: [Tool] = []
-    var outTokens: Int = 0
+    var outputTokens: Int = 0
     var cacheRead: Int = 0
     var cacheCreate: Int = 0
     var skills: [String] = []
     var agents: [String] = []
     var category: String = "other"
-    init(n: Int) { self.n = n }
+    init(number: Int) { self.number = number }
 }
 
+/// A dispatched subagent: its identity, turns, and duration.
 struct Subagent {
     var id: String
     var type: String
-    var desc: String
+    var description: String
     var turns: [Turn]
     var duration: Double
 }
 
+/// A fully-parsed session: metadata, prompt, turns, and subagents.
 struct Parsed {
-    var sessionId: String
+    var sessionID: String
     var model: String
     var durationMin: Double
     var prompt: String
@@ -542,95 +602,106 @@ struct Parsed {
 
 // Agent metadata sidecar (stable keys, synthesized Decodable). Both fields are
 // optional so absence is tolerated; presence vs. absence drives the fallback.
+
+/// The `agent-*.meta.json` sidecar describing a dispatched subagent.
 struct AgentMeta: Decodable {
     let agentType: String?
     let description: String?
 }
 
-// Parse ISO timestamp like "2026-06-05T04:44:27.709Z" -> seconds since epoch.
-// Mirrors datetime.fromisoformat(ts.replace("Z","+00:00")); returns nil on failure.
-func parseTimestamp(_ ts: String) -> Double? {
-    let s = ts.replacingOccurrences(of: "Z", with: "+00:00")
+/// Parses an ISO timestamp like `"2026-06-05T04:44:27.709Z"` into seconds since
+/// the epoch, or `nil` on failure.
+///
+/// Mirrors `datetime.fromisoformat(ts.replace("Z","+00:00"))`.
+func parseTimestamp(_ timestamp: String) -> Double? {
+    let normalized = timestamp.replacingOccurrences(of: "Z", with: "+00:00")
     // Expect: YYYY-MM-DDTHH:MM:SS[.ffffff](+HH:MM | -HH:MM)
     // datetime.fromisoformat is strict but the inputs are well-formed; parse manually.
-    guard let tIdx = s.firstIndex(of: "T") else { return nil }
-    let datePart = String(s[s.startIndex..<tIdx])
-    let rest = String(s[s.index(after: tIdx)...])
+    guard let timeMarker = normalized.firstIndex(of: "T") else { return nil }
+    let datePart = String(normalized[normalized.startIndex..<timeMarker])
+    let rest = String(normalized[normalized.index(after: timeMarker)...])
     // rest = HH:MM:SS[.frac][tz]
     // Find tz offset: look for '+' or '-' after the time (skip first char).
-    var tzSign: Character? = nil
-    var tzIndex: String.Index? = nil
-    let restChars = Array(rest)
-    var ci = 0
-    while ci < restChars.count {
-        let c = restChars[ci]
-        if (c == "+" || c == "-") && ci > 0 {
-            tzSign = c
-            tzIndex = rest.index(rest.startIndex, offsetBy: ci)
+    var timeZoneSign: Character? = nil
+    var timeZoneIndex: String.Index? = nil
+    let restCharacters = Array(rest)
+    var characterIndex = 0
+    while characterIndex < restCharacters.count {
+        let character = restCharacters[characterIndex]
+        if (character == "+" || character == "-") && characterIndex > 0 {
+            timeZoneSign = character
+            timeZoneIndex = rest.index(rest.startIndex, offsetBy: characterIndex)
             break
         }
-        ci += 1
+        characterIndex += 1
     }
     var timePart = rest
-    var tzSeconds = 0.0
-    if let tzIdx = tzIndex, let sign = tzSign {
-        timePart = String(rest[rest.startIndex..<tzIdx])
-        let tzStr = String(rest[rest.index(after: tzIdx)...]) // HH:MM
-        let comps = tzStr.split(separator: ":")
-        if comps.count == 2, let h = Double(comps[0]), let m = Double(comps[1]) {
-            tzSeconds = (h * 3600 + m * 60) * (sign == "-" ? -1 : 1)
+    var timeZoneSeconds = 0.0
+    if let timeZoneIndex = timeZoneIndex, let sign = timeZoneSign {
+        timePart = String(rest[rest.startIndex..<timeZoneIndex])
+        let offset = String(rest[rest.index(after: timeZoneIndex)...]) // HH:MM
+        let components = offset.split(separator: ":")
+        if components.count == 2, let hours = Double(components[0]), let minutes = Double(components[1]) {
+            timeZoneSeconds = (hours * 3600 + minutes * 60) * (sign == "-" ? -1 : 1)
         }
     }
     // datePart = YYYY-MM-DD
-    let dc = datePart.split(separator: "-")
-    guard dc.count == 3, let year = Int(dc[0]), let month = Int(dc[1]), let day = Int(dc[2]) else { return nil }
+    let dateComponents = datePart.split(separator: "-")
+    guard dateComponents.count == 3,
+          let year = Int(dateComponents[0]),
+          let month = Int(dateComponents[1]),
+          let day = Int(dateComponents[2]) else { return nil }
     // timePart = HH:MM:SS[.frac]
-    let tc = timePart.split(separator: ":")
-    guard tc.count == 3, let hour = Int(tc[0]), let minute = Int(tc[1]) else { return nil }
-    let secStr = String(tc[2])
+    let timeComponents = timePart.split(separator: ":")
+    guard timeComponents.count == 3,
+          let hour = Int(timeComponents[0]),
+          let minute = Int(timeComponents[1]) else { return nil }
+    let secondString = String(timeComponents[2])
     var second = 0
-    var frac = 0.0
-    if let dot = secStr.firstIndex(of: ".") {
-        second = Int(secStr[secStr.startIndex..<dot]) ?? 0
-        let fracStr = String(secStr[secStr.index(after: dot)...])
-        if let f = Double("0." + fracStr) { frac = f }
+    var fraction = 0.0
+    if let dot = secondString.firstIndex(of: ".") {
+        second = Int(secondString[secondString.startIndex..<dot]) ?? 0
+        let fractionString = String(secondString[secondString.index(after: dot)...])
+        if let parsed = Double("0." + fractionString) { fraction = parsed }
     } else {
-        second = Int(secStr) ?? 0
+        second = Int(secondString) ?? 0
     }
     // Days from civil (proleptic Gregorian) -> days since 1970-01-01.
     let epochDay = daysFromCivil(year, month, day)
     let total = Double(epochDay) * 86400.0
-        + Double(hour) * 3600.0 + Double(minute) * 60.0 + Double(second) + frac
-        - tzSeconds
+        + Double(hour) * 3600.0 + Double(minute) * 60.0 + Double(second) + fraction
+        - timeZoneSeconds
     return total
 }
 
-// Howard Hinnant's days_from_civil algorithm.
-func daysFromCivil(_ y0: Int, _ m: Int, _ d: Int) -> Int {
-    let y = m <= 2 ? y0 - 1 : y0
-    let era = (y >= 0 ? y : y - 399) / 400
-    let yoe = y - era * 400
-    let doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
-    return era * 146097 + doe - 719468
+/// Returns the day count since 1970-01-01 via Howard Hinnant's days_from_civil.
+func daysFromCivil(_ year0: Int, _ month: Int, _ day: Int) -> Int {
+    let year = month <= 2 ? year0 - 1 : year0
+    let era = (year >= 0 ? year : year - 399) / 400
+    let yearOfEra = year - era * 400
+    let dayOfYear = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1
+    let dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear
+    return era * 146097 + dayOfEra - 719468
 }
 
+/// Parses the session transcript at `path` into a `Parsed`, recursing into
+/// subagent transcripts unless suppressed.
 func parseSession(_ path: URL, isSubagent: Bool = false, includeSubagents: Bool = true) -> Parsed {
-    let events = readJsonl(path)
+    let events = readJSONL(path)
     let prompt = extractPrompt(events)
     let stem = path.deletingPathExtension().lastPathComponent
     // Python: sid = (events[0].get("sessionId") if events else None) or path.stem
     // If sessionId is missing/empty/None, fall back to stem.
-    var sid: String = stem
-    if let first = events.first, let s = first.sessionId, !s.isEmpty {
-        sid = s
+    var sessionID: String = stem
+    if let first = events.first, let id = first.sessionID, !id.isEmpty {
+        sessionID = id
     }
 
     // model
     var model = "(unknown)"
     if let firstAssistant = events.first(where: { $0.type == "assistant" }) {
-        if let ms = firstAssistant.message?.model {
-            model = ms
+        if let assistantModel = firstAssistant.message?.model {
+            model = assistantModel
         } else {
             model = "(unknown)"
         }
@@ -638,10 +709,10 @@ func parseSession(_ path: URL, isSubagent: Bool = false, includeSubagents: Bool 
 
     // duration
     var times: [Double] = []
-    for ev in events {
-        if let ts = ev.timestamp, !ts.isEmpty {
-            if let t = parseTimestamp(ts) {
-                times.append(t)
+    for event in events {
+        if let timestamp = event.timestamp, !timestamp.isEmpty {
+            if let time = parseTimestamp(timestamp) {
+                times.append(time)
             }
         }
     }
@@ -649,64 +720,64 @@ func parseSession(_ path: URL, isSubagent: Bool = false, includeSubagents: Bool 
 
     // tool_results keyed by tool_use_id
     var toolResults: [String: (text: String, isError: Bool)] = [:]
-    for ev in events {
-        if ev.type == "user", let arr = ev.message?.content?.arrayValue {
-            for block in arr {
-                if case let .toolResult(toolUseId, content, isError) = block {
-                    var txt = ""
-                    if let cs = content?.stringValue {
-                        txt = cs
-                    } else if let carr = content?.arrayValue {
+    for event in events {
+        if event.type == "user", let blocks = event.message?.content?.arrayValue {
+            for block in blocks {
+                if case let .toolResult(toolUseID, content, isError) = block {
+                    var text = ""
+                    if let string = content?.stringValue {
+                        text = string
+                    } else if let contentBlocks = content?.arrayValue {
                         var parts: [String] = []
-                        for i in carr {
-                            if let t = i["type"]?.stringValue, t == "text" {
-                                parts.append(i["text"]?.stringValue ?? "")
+                        for item in contentBlocks {
+                            if let type = item["type"]?.stringValue, type == "text" {
+                                parts.append(item["text"]?.stringValue ?? "")
                             }
                         }
-                        txt = parts.joined(separator: "\n")
+                        text = parts.joined(separator: "\n")
                     }
-                    let key = stringifyId(toolUseId)
-                    toolResults[key] = (txt, isError.value)
+                    let key = stringifyID(toolUseID)
+                    toolResults[key] = (text, isError.value)
                 }
             }
         }
     }
 
     var turns: [Turn] = []
-    var turnNum = 0
-    for ev in events {
-        if ev.type != "assistant" { continue }
+    var turnNumber = 0
+    for event in events {
+        if event.type != "assistant" { continue }
         if !isSubagent {
-            if ev.isSidechain?.value == true { continue }
+            if event.isSidechain?.value == true { continue }
         }
-        turnNum += 1
-        let usage = ev.message?.usage
-        let turn = Turn(n: turnNum)
-        turn.outTokens = usage?.output_tokens ?? 0
-        turn.cacheRead = usage?.cache_read_input_tokens ?? 0
-        turn.cacheCreate = usage?.cache_creation_input_tokens ?? 0
-        if let arr = ev.message?.content?.arrayValue {
-            for block in arr {
+        turnNumber += 1
+        let usage = event.message?.usage
+        let turn = Turn(number: turnNumber)
+        turn.outputTokens = usage?.outputTokens ?? 0
+        turn.cacheRead = usage?.cacheReadInputTokens ?? 0
+        turn.cacheCreate = usage?.cacheCreationInputTokens ?? 0
+        if let blocks = event.message?.content?.arrayValue {
+            for block in blocks {
                 guard case let .toolUse(id, name, input) = block else { continue }
-                let callId = stringifyId(id)
+                let callID = stringifyID(id)
                 let args = input
-                let nname = normTool(name ?? "")
-                var tool = Tool(name: nname, args: args, error: false, errs: [])
-                if nname == "skill", let sk = args["skill"], !sk.isNull {
-                    turn.skills.append(sk.pyStr)
+                let normalizedName = (name ?? "").normalizedToolName
+                var tool = Tool(name: normalizedName, args: args, isError: false, errors: [])
+                if normalizedName == "skill", let skill = args["skill"], !skill.isNull {
+                    turn.skills.append(skill.pythonString)
                 }
-                if nname == "agent" {
-                    if let st = args["subagent_type"], !st.isNull {
-                        turn.agents.append(st.pyStr)
+                if normalizedName == "agent" {
+                    if let subagentType = args["subagent_type"], !subagentType.isNull {
+                        turn.agents.append(subagentType.pythonString)
                     } else {
                         turn.agents.append("general-purpose")
                     }
                 }
-                if let tr = toolResults[callId] {
-                    let (hasErr, errs) = errorSummary(tr.text)
-                    if tr.isError || hasErr {
-                        tool.error = true
-                        tool.errs = errs
+                if let result = toolResults[callID] {
+                    let (hasError, errors) = errorSummary(result.text)
+                    if result.isError || hasError {
+                        tool.isError = true
+                        tool.errors = errors
                     }
                 }
                 turn.tools.append(tool)
@@ -717,78 +788,83 @@ func parseSession(_ path: URL, isSubagent: Bool = false, includeSubagents: Bool 
 
     var subagents: [Subagent] = []
     if includeSubagents && !isSubagent {
-        let subDir = path.deletingPathExtension()
+        let subagentsDir = path.deletingPathExtension()
             .deletingLastPathComponent()
             .appendingPathComponent(stem)
             .appendingPathComponent("subagents")
-        let fm = FileManager.default
-        if fm.fileExists(atPath: subDir.path) {
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: subagentsDir.path) {
             // sorted(sub_dir.glob("agent-*.jsonl")) — non-recursive, lexical sort by full path.
             var agentFiles: [URL] = []
-            if let entries = try? fm.contentsOfDirectory(at: subDir, includingPropertiesForKeys: nil) {
-                for u in entries {
-                    let name = u.lastPathComponent
+            if let entries = try? fileManager.contentsOfDirectory(at: subagentsDir, includingPropertiesForKeys: nil) {
+                for url in entries {
+                    let name = url.lastPathComponent
                     if name.hasPrefix("agent-") && name.hasSuffix(".jsonl") {
-                        agentFiles.append(u)
+                        agentFiles.append(url)
                     }
                 }
             }
             // Python sorts Path objects by their string value (full path).
             agentFiles.sort { $0.path < $1.path }
-            for af in agentFiles {
-                let afStem = af.deletingPathExtension().lastPathComponent
-                let agentId = afStem.hasPrefix("agent-")
-                    ? String(afStem.dropFirst("agent-".count)) : afStem
+            for agentFile in agentFiles {
+                let agentStem = agentFile.deletingPathExtension().lastPathComponent
+                let agentID = agentStem.hasPrefix("agent-")
+                    ? String(agentStem.dropFirst("agent-".count)) : agentStem
                 var meta: AgentMeta? = nil
-                let metaPath = af.deletingLastPathComponent()
-                    .appendingPathComponent("agent-\(agentId).meta.json")
-                if fm.fileExists(atPath: metaPath.path) {
+                let metaPath = agentFile.deletingLastPathComponent()
+                    .appendingPathComponent("agent-\(agentID).meta.json")
+                if fileManager.fileExists(atPath: metaPath.path) {
                     if let data = try? Data(contentsOf: metaPath),
-                       let m = try? jsonDecoder.decode(AgentMeta.self, from: data) {
-                        meta = m
+                       let decoded = try? jsonDecoder.decode(AgentMeta.self, from: data) {
+                        meta = decoded
                     }
                 }
-                let sub = parseSession(af, isSubagent: true, includeSubagents: false)
+                let sub = parseSession(agentFile, isSubagent: true, includeSubagents: false)
                 // Python: meta.get("agentType", "(unknown)") / meta.get("description", "").
                 // Missing key -> default; present (even if non-string) -> str(). Here a
                 // present-but-non-string agentType would have failed String decode and
                 // landed as nil; the real data is always a string, matching Python.
-                let aType = meta?.agentType ?? "(unknown)"
-                let aDesc = meta?.description ?? ""
+                let agentType = meta?.agentType ?? "(unknown)"
+                let agentDescription = meta?.description ?? ""
                 subagents.append(Subagent(
-                    id: agentId,
-                    type: aType,
-                    desc: aDesc,
+                    id: agentID,
+                    type: agentType,
+                    description: agentDescription,
                     turns: sub.turns,
                     duration: sub.durationMin))
             }
         }
     }
 
-    return Parsed(sessionId: sid, model: model, durationMin: durationMin,
+    return Parsed(sessionID: sessionID, model: model, durationMin: durationMin,
                   prompt: prompt, turns: turns, subagents: subagents)
 }
 
-// Python str(x) for an id-shaped value (tool_use_id / id). None -> "None".
-func stringifyId(_ v: JSONValue?) -> String {
-    guard let v = v else { return "None" }
-    return v.pyStr
+/// The Python `str(x)` rendering of an id-shaped value; `nil` becomes `"None"`.
+func stringifyID(_ value: JSONValue?) -> String {
+    guard let value = value else { return "None" }
+    return value.pythonString
 }
 
 // --------------------------------------------------------------------------- //
 // Categorization
 // --------------------------------------------------------------------------- //
 
-func isShell(_ t: Tool) -> Bool { t.name == "shell" }
-func cmd(_ t: Tool) -> String {
-    if isShell(t) {
-        if let c = t.args["command"], !c.isNull {
-            if let s = c.stringValue { return s }
-            return c.pyStr
+extension Tool {
+    /// A Boolean value indicating whether this is a shell (Bash) tool call.
+    var isShell: Bool { name == "shell" }
+
+    /// The shell command string for a shell tool, or the empty string otherwise.
+    var command: String {
+        if isShell {
+            if let value = args["command"], !value.isNull {
+                if let string = value.stringValue { return string }
+                return value.pythonString
+            }
+            return ""
         }
         return ""
     }
-    return ""
 }
 
 // Native Swift Regex literals. Extended `#/.../#` form throughout: it needs no
@@ -796,6 +872,8 @@ func cmd(_ t: Tool) -> String {
 // under the plain `swift` interpreter without -enable-bare-slash-regex. All
 // case-sensitive, matching the original NSRegularExpression default — except
 // `errorTrigger`, which is case-insensitive via the inline `(?i)`.
+
+/// The classification and error-detection regexes used across the analyzer.
 enum Patterns {
     static let helper = #/build-and-run\.sh|build-and-run\b|BuildAndRun/#
     static let build = #/\bxcodebuild\b|build-and-run|BuildAndRun|\btuist\b|\bswift build\b/#
@@ -808,33 +886,39 @@ enum Patterns {
     static let errorTrigger = #/(?i)error:|BUILD FAILED|fatal error|Command .* failed|linker command failed|code object is not signed|Undefined symbol|cannot find/#
 }
 
-func categorize(_ turn: Turn) -> String {
-    let names = turn.tools.map { $0.name }
-    let hasSkill = !turn.skills.isEmpty
-    let hasBuild = turn.tools.contains { isShell($0) && regexSearch(Patterns.build, cmd($0)) }
-    let hasBuildErr = turn.tools.contains { $0.error && isShell($0) && regexSearch(Patterns.build, cmd($0)) }
-    let hasRun = turn.tools.contains { isShell($0) && regexSearch(Patterns.run, cmd($0)) }
-    let hasGit = turn.tools.contains { isShell($0) && regexSearch(Patterns.git, cmd($0)) }
-    let isDiag = turn.tools.contains { isShell($0) && regexSearch(Patterns.diagnostic, cmd($0)) }
-    let hasScaffold = turn.tools.contains { regexSearch(Patterns.scaffold, cmd($0)) }
-    let hasCreate = names.contains("create")
-    let hasEdit = names.contains("edit")
-    let hasView = names.contains("view")
-    let hasAgent = names.contains("agent")
+extension Turn {
+    /// The category label classifying this turn's activity.
+    ///
+    /// - Complexity: O(*t*) in the turn's tool count; each tool is scanned and a
+    ///   handful of regexes are matched against its command.
+    var classified: String {
+        let names = tools.map { $0.name }
+        let hasSkill = !skills.isEmpty
+        let hasBuild = tools.contains { $0.isShell && $0.command.contains(Patterns.build) }
+        let hasBuildError = tools.contains { $0.isError && $0.isShell && $0.command.contains(Patterns.build) }
+        let hasRun = tools.contains { $0.isShell && $0.command.contains(Patterns.run) }
+        let hasGit = tools.contains { $0.isShell && $0.command.contains(Patterns.git) }
+        let isDiagnostic = tools.contains { $0.isShell && $0.command.contains(Patterns.diagnostic) }
+        let hasScaffold = tools.contains { $0.command.contains(Patterns.scaffold) }
+        let hasCreate = names.contains("create")
+        let hasEdit = names.contains("edit")
+        let hasView = names.contains("view")
+        let hasAgent = names.contains("agent")
 
-    if hasSkill && names.count <= 2 { return "skill-load" }
-    if hasGit && !hasBuild { return "git" }
-    if hasBuild && hasBuildErr { return "build-fix" }
-    if hasBuild && !hasBuildErr { return "build-ok" }
-    if hasRun { return "run" }
-    if isDiag && !hasEdit { return "diagnosing" }
-    if hasScaffold { return "scaffold" }
-    if hasAgent { return "subagent" }
-    if hasCreate && !hasEdit { return "code-create" }
-    if hasEdit { return "code-edit" }
-    if hasView && !hasEdit && !hasCreate { return "explore" }
-    if names.isEmpty { return "thinking" }
-    return "other"
+        if hasSkill && names.count <= 2 { return "skill-load" }
+        if hasGit && !hasBuild { return "git" }
+        if hasBuild && hasBuildError { return "build-fix" }
+        if hasBuild && !hasBuildError { return "build-ok" }
+        if hasRun { return "run" }
+        if isDiagnostic && !hasEdit { return "diagnosing" }
+        if hasScaffold { return "scaffold" }
+        if hasAgent { return "subagent" }
+        if hasCreate && !hasEdit { return "code-create" }
+        if hasEdit { return "code-edit" }
+        if hasView && !hasEdit && !hasCreate { return "explore" }
+        if names.isEmpty { return "thinking" }
+        return "other"
+    }
 }
 
 // --------------------------------------------------------------------------- //
@@ -850,103 +934,93 @@ let categoryLabels: [String: String] = [
     "subagent": "Subagent dispatch", "other": "Other",
 ]
 
-// os.path.basename equivalent (POSIX): text after the last "/".
-func basename(_ p: String) -> String {
-    if let idx = p.lastIndex(of: "/") {
-        return String(p[p.index(after: idx)...])
-    }
-    return p
-}
-
-func argStr(_ args: JSONValue, _ key: String) -> String? {
-    guard let v = args[key], !v.isNull else { return nil }
-    if let s = v.stringValue { return s }
-    return v.pyStr
-}
-
-// Python truthiness for a.get("path") or a.get("file_path").
-func truthyStr(_ args: JSONValue, _ key: String) -> String? {
-    guard let v = args[key], !v.isNull else { return nil }
-    switch v {
-    case let .string(s):
-        return s.isEmpty ? nil : s
-    case let .bool(b):
-        return b ? "True" : nil
-    case let .int(i):
-        return i == 0 ? nil : String(i)
-    case let .double(d):
-        return d == 0 ? nil : v.pyStr
-    case let .array(a):
-        return a.isEmpty ? nil : v.pyStr
-    case let .object(o):
-        return o.isEmpty ? nil : v.pyStr
-    case .null:
-        return nil
-    }
-}
-
-func toolList(_ turn: Turn) -> String {
-    var parts: [String] = []
-    for t in turn.tools {
-        let err = t.error ? " ❌" : ""
-        var summ = ""
-        let a = t.args
-        if t.name == "shell" {
-            let c = argStr(a, "command") ?? ""
-            let firstLine = splitLines(c).first ?? ""
-            summ = prefixChars(firstLine, 60)
-        } else if let p = truthyStr(a, "path") ?? truthyStr(a, "file_path") {
-            summ = basename(p)
-        } else if t.name == "skill" {
-            summ = stringifyMaybe(a["skill"])
-        } else if t.name == "agent" {
-            summ = stringifyMaybe(a["subagent_type"])
-        } else if let pat = truthyPattern(a) {
-            summ = pat
+extension String {
+    /// The POSIX basename of this path: the text after the last `/`.
+    var basename: String {
+        if let index = lastIndex(of: "/") {
+            return String(self[self.index(after: index)...])
         }
-        if !summ.isEmpty {
-            parts.append("\(t.name)(\(summ))\(err)")
-        } else {
-            parts.append("\(t.name)\(err)")
+        return self
+    }
+}
+
+extension JSONValue {
+    /// The string value of `key`, stringified per Python `str()`, or `nil` when
+    /// the member is missing or null.
+    func string(forKey key: String) -> String? {
+        guard let value = self[key], !value.isNull else { return nil }
+        if let string = value.stringValue { return string }
+        return value.pythonString
+    }
+
+    /// The value of `key` rendered per Python truthiness, or `nil` when it is
+    /// missing, null, or falsey.
+    func truthyString(forKey key: String) -> String? {
+        guard let value = self[key], !value.isNull else { return nil }
+        switch value {
+        case let .string(string):
+            return string.isEmpty ? nil : string
+        case let .bool(bool):
+            return bool ? "True" : nil
+        case let .int(int):
+            return int == 0 ? nil : String(int)
+        case let .double(double):
+            return double == 0 ? nil : value.pythonString
+        case let .array(array):
+            return array.isEmpty ? nil : value.pythonString
+        case let .object(object):
+            return object.isEmpty ? nil : value.pythonString
+        case .null:
+            return nil
         }
     }
-    let skills = turn.skills.isEmpty ? "" : " [skill: \(turn.skills.joined(separator: ","))]"
-    return parts.joined(separator: ", ") + skills
 }
 
-// Python str(x) for a value used as a summary; None/missing -> "".
-func stringifyMaybe(_ v: JSONValue?) -> String {
-    guard let v = v, !v.isNull else { return "" }
-    if let s = v.stringValue { return s }
-    return v.pyStr
-}
-
-// Python: elif a.get("pattern"): summ = str(a["pattern"])
-func truthyPattern(_ args: JSONValue) -> String? {
-    guard let v = args["pattern"], !v.isNull else { return nil }
-    switch v {
-    case let .string(s):
-        return s.isEmpty ? nil : s
-    case let .bool(b):
-        return b ? "True" : nil
-    case let .int(i):
-        return i == 0 ? nil : String(i)
-    case let .double(d):
-        return d == 0 ? nil : v.pyStr
-    case let .array(a):
-        return a.isEmpty ? nil : v.pyStr
-    case let .object(o):
-        return o.isEmpty ? nil : v.pyStr
-    case .null:
-        return nil
+extension Turn {
+    /// The one-line markdown rendering of this turn's tools and skills.
+    var toolListDescription: String {
+        var parts: [String] = []
+        for tool in tools {
+            let errorMark = tool.isError ? " ❌" : ""
+            var summary = ""
+            let args = tool.args
+            if tool.name == "shell" {
+                let command = args.string(forKey: "command") ?? ""
+                let firstLine = command.pythonLines.first ?? ""
+                summary = firstLine.truncated(to: 60)
+            } else if let path = args.truthyString(forKey: "path") ?? args.truthyString(forKey: "file_path") {
+                summary = path.basename
+            } else if tool.name == "skill" {
+                summary = stringifyMaybe(args["skill"])
+            } else if tool.name == "agent" {
+                summary = stringifyMaybe(args["subagent_type"])
+            } else if let pattern = args.truthyString(forKey: "pattern") {
+                summary = pattern
+            }
+            if !summary.isEmpty {
+                parts.append("\(tool.name)(\(summary))\(errorMark)")
+            } else {
+                parts.append("\(tool.name)\(errorMark)")
+            }
+        }
+        let skillsTag = skills.isEmpty ? "" : " [skill: \(skills.joined(separator: ","))]"
+        return parts.joined(separator: ", ") + skillsTag
     }
 }
 
+/// The Python `str(x)` rendering of a summary value; `nil`/missing becomes `""`.
+func stringifyMaybe(_ value: JSONValue?) -> String {
+    guard let value = value, !value.isNull else { return "" }
+    if let string = value.stringValue { return string }
+    return value.pythonString
+}
+
+/// Renders the parsed session into the final markdown report body.
 func render(_ parsed: Parsed, includeSubagents: Bool) -> String {
     var allTurns: [Turn] = parsed.turns
     if includeSubagents {
-        for sa in parsed.subagents {
-            allTurns += sa.turns
+        for subagent in parsed.subagents {
+            allTurns += subagent.turns
         }
     }
 
@@ -954,16 +1028,16 @@ func render(_ parsed: Parsed, includeSubagents: Bool) -> String {
     let buildFix = allTurns.filter { $0.category == "build-fix" }.count
     let attempts = buildOk + buildFix
 
-    let usedBar = allTurns.contains { tn in tn.tools.contains { isShell($0) && regexSearch(Patterns.helper, cmd($0)) } }
-    let rawXcb = allTurns.contains { tn in tn.tools.contains {
-        isShell($0) && regexSearch(Patterns.xcodebuild, cmd($0)) && !regexSearch(Patterns.helper, cmd($0))
+    let usedHelper = allTurns.contains { turn in turn.tools.contains { $0.isShell && $0.command.contains(Patterns.helper) } }
+    let usedRawXcodebuild = allTurns.contains { turn in turn.tools.contains {
+        $0.isShell && $0.command.contains(Patterns.xcodebuild) && !$0.command.contains(Patterns.helper)
     } }
     let buildStatus: String
-    if usedBar && !rawXcb {
+    if usedHelper && !usedRawXcodebuild {
         buildStatus = "Used build-and-run.sh for all builds"
-    } else if usedBar && rawXcb {
+    } else if usedHelper && usedRawXcodebuild {
         buildStatus = "Mixed: raw xcodebuild and build-and-run.sh"
-    } else if rawXcb {
+    } else if usedRawXcodebuild {
         buildStatus = "NOT USED: raw xcodebuild only, never used build-and-run.sh"
     } else {
         buildStatus = "No build commands detected"
@@ -971,89 +1045,89 @@ func render(_ parsed: Parsed, includeSubagents: Bool) -> String {
 
     // build errors
     var buildErrors: [(Int, [String])] = []
-    for t in allTurns {
-        for tool in t.tools {
-            if tool.error && isShell(tool) && regexSearch(Patterns.build, cmd(tool)) && !tool.errs.isEmpty {
-                buildErrors.append((t.n, tool.errs))
+    for turn in allTurns {
+        for tool in turn.tools {
+            if tool.isError && tool.isShell && tool.command.contains(Patterns.build) && !tool.errors.isEmpty {
+                buildErrors.append((turn.number, tool.errors))
             }
         }
     }
 
     // skills timeline
     var skillTimeline: [(Int, String, String)] = []
-    for t in parsed.turns {
-        for s in t.skills {
-            skillTimeline.append((t.n, s, "parent"))
+    for turn in parsed.turns {
+        for skill in turn.skills {
+            skillTimeline.append((turn.number, skill, "parent"))
         }
     }
-    for sa in parsed.subagents {
-        for t in sa.turns {
-            for s in t.skills {
-                skillTimeline.append((t.n, s, "subagent:\(sa.type)"))
+    for subagent in parsed.subagents {
+        for turn in subagent.turns {
+            for skill in turn.skills {
+                skillTimeline.append((turn.number, skill, "subagent:\(subagent.type)"))
             }
         }
     }
 
     // token totals
-    let outTok = allTurns.reduce(0) { $0 + $1.outTokens }
-    let crTok = allTurns.reduce(0) { $0 + $1.cacheRead }
-    let ccTok = allTurns.reduce(0) { $0 + $1.cacheCreate }
+    let outputTokens = allTurns.reduce(0) { $0 + $1.outputTokens }
+    let cacheReadTokens = allTurns.reduce(0) { $0 + $1.cacheRead }
+    let cacheCreateTokens = allTurns.reduce(0) { $0 + $1.cacheCreate }
 
     // category table — preserve dict-insertion order then stable sort by turns desc.
-    var catOrder: [String] = []
-    var catCounts: [String: (turns: Int, tokens: Int)] = [:]
-    for t in allTurns {
-        let c = t.category
-        if catCounts[c] == nil {
-            catCounts[c] = (0, 0)
-            catOrder.append(c)
+    var categoryOrder: [String] = []
+    var categoryCounts: [String: (turns: Int, tokens: Int)] = [:]
+    for turn in allTurns {
+        let category = turn.category
+        if categoryCounts[category] == nil {
+            categoryCounts[category] = (0, 0)
+            categoryOrder.append(category)
         }
-        catCounts[c]!.turns += 1
-        catCounts[c]!.tokens += t.outTokens
+        categoryCounts[category]!.turns += 1
+        categoryCounts[category]!.tokens += turn.outputTokens
     }
     // Python sorted(..., key=turns, reverse=True) is stable: ties keep insertion order.
-    let catRows = stableSortByTurnsDesc(order: catOrder, counts: catCounts)
+    let categoryRows = stableSortByTurnsDescending(order: categoryOrder, counts: categoryCounts)
 
     // stuck patterns
     var stuck: [String] = []
     var readsOrder: [String] = []
     var reads: [String: Int] = [:]
-    for t in allTurns {
-        for tool in t.tools {
+    for turn in allTurns {
+        for tool in turn.tools {
             if tool.name == "view" {
-                if let p = truthyStr(tool.args, "path") ?? truthyStr(tool.args, "file_path") {
-                    let f = basename(p)
-                    if reads[f] == nil { reads[f] = 0; readsOrder.append(f) }
-                    reads[f]! += 1
+                if let path = tool.args.truthyString(forKey: "path") ?? tool.args.truthyString(forKey: "file_path") {
+                    let file = path.basename
+                    if reads[file] == nil { reads[file] = 0; readsOrder.append(file) }
+                    reads[file]! += 1
                 }
             }
         }
     }
     var excessive: [(String, Int)] = []
-    for f in readsOrder {
-        let n = reads[f]!
-        if n >= 3 { excessive.append((f, n)) }
+    for file in readsOrder {
+        let count = reads[file]!
+        if count >= 3 { excessive.append((file, count)) }
     }
     if !excessive.isEmpty {
         let joined = excessive.map { "\($0.0) (\($0.1)x)" }.joined(separator: ", ")
         stuck.append("Repeated file reads: " + joined)
     }
-    var consec = 0
-    var mx = 0
-    for t in allTurns {
-        if t.category == "build-fix" {
-            consec += 1; mx = max(mx, consec)
-        } else if t.category == "build-ok" {
-            consec = 0
+    var consecutive = 0
+    var maxConsecutive = 0
+    for turn in allTurns {
+        if turn.category == "build-fix" {
+            consecutive += 1; maxConsecutive = max(maxConsecutive, consecutive)
+        } else if turn.category == "build-ok" {
+            consecutive = 0
         }
     }
-    if mx >= 3 {
-        stuck.append("Build loop: \(mx) consecutive build failures before success")
+    if maxConsecutive >= 3 {
+        stuck.append("Build loop: \(maxConsecutive) consecutive build failures before success")
     }
     var cleans = 0
-    for t in allTurns {
-        for tool in t.tools {
-            if regexSearch(Patterns.clean, cmd(tool)) { cleans += 1 }
+    for turn in allTurns {
+        for tool in turn.tools {
+            if tool.command.contains(Patterns.clean) { cleans += 1 }
         }
     }
     if cleans >= 2 {
@@ -1061,123 +1135,124 @@ func render(_ parsed: Parsed, includeSubagents: Bool) -> String {
     }
 
     // ----- markdown -----
-    var md: [String] = []
-    md.append("# Session Analysis Report\n")
-    md.append("## Overview\n")
-    md.append("| Field | Value |")
-    md.append("|-------|-------|")
-    md.append("| Harness | Claude Code |")
-    md.append("| Session ID | `\(parsed.sessionId)` |")
-    md.append("| Model | \(parsed.model) |")
-    md.append("| Duration | \(dur(parsed.durationMin)) min |")
-    md.append("| Turns (parent) | \(parsed.turns.count) |")
+    var markdown: [String] = []
+    markdown.append("# Session Analysis Report\n")
+    markdown.append("## Overview\n")
+    markdown.append("| Field | Value |")
+    markdown.append("|-------|-------|")
+    markdown.append("| Harness | Claude Code |")
+    markdown.append("| Session ID | `\(parsed.sessionID)` |")
+    markdown.append("| Model | \(parsed.model) |")
+    markdown.append("| Duration | \(parsed.durationMin.minutesString) min |")
+    markdown.append("| Turns (parent) | \(parsed.turns.count) |")
     if includeSubagents && !parsed.subagents.isEmpty {
-        let subTurns = parsed.subagents.reduce(0) { $0 + $1.turns.count }
-        md.append("| Subagents | \(parsed.subagents.count) (\(subTurns) turns) |")
+        let subagentTurns = parsed.subagents.reduce(0) { $0 + $1.turns.count }
+        markdown.append("| Subagents | \(parsed.subagents.count) (\(subagentTurns) turns) |")
     }
-    md.append("| Output tokens (combined) | \(grouped(outTok)) |")
-    md.append("| Cache read tokens | \(grouped(crTok)) |")
-    md.append("| Cache create tokens | \(grouped(ccTok)) |")
-    md.append("")
+    markdown.append("| Output tokens (combined) | \(outputTokens.groupedDigits) |")
+    markdown.append("| Cache read tokens | \(cacheReadTokens.groupedDigits) |")
+    markdown.append("| Cache create tokens | \(cacheCreateTokens.groupedDigits) |")
+    markdown.append("")
 
-    md.append("## Prompt\n")
-    var p = parsed.prompt
-    if p.count > 500 {
-        p = String(p.prefix(500)) + "..."
+    markdown.append("## Prompt\n")
+    var prompt = parsed.prompt
+    if prompt.count > 500 {
+        prompt = String(prompt.prefix(500)) + "..."
     }
-    md.append("```"); md.append(p); md.append("```"); md.append("")
+    markdown.append("```"); markdown.append(prompt); markdown.append("```"); markdown.append("")
 
-    md.append("## Turn Breakdown\n")
+    markdown.append("## Turn Breakdown\n")
     if includeSubagents && !parsed.subagents.isEmpty {
-        md.append("_Combined parent + \(parsed.subagents.count) subagent transcript(s)._\n")
+        markdown.append("_Combined parent + \(parsed.subagents.count) subagent transcript(s)._\n")
     }
-    md.append("| Category | Turns | Output Tokens |")
-    md.append("|----------|------:|--------------:|")
-    for (cat, e) in catRows {
-        let label = categoryLabels[cat] ?? cat
-        md.append("| \(label) | \(e.turns) | \(grouped(e.tokens)) |")
+    markdown.append("| Category | Turns | Output Tokens |")
+    markdown.append("|----------|------:|--------------:|")
+    for (category, entry) in categoryRows {
+        let label = categoryLabels[category] ?? category
+        markdown.append("| \(label) | \(entry.turns) | \(entry.tokens.groupedDigits) |")
     }
-    md.append("")
+    markdown.append("")
 
-    md.append("## Skills\n")
+    markdown.append("## Skills\n")
     if !skillTimeline.isEmpty {
-        md.append("**Invoked:**")
-        for (n, s, origin) in skillTimeline {
+        markdown.append("**Invoked:**")
+        for (number, skill, origin) in skillTimeline {
             let tag = origin == "parent" ? "" : " _(in \(origin))_"
-            md.append("- Turn \(n): `\(s)`\(tag)")
+            markdown.append("- Turn \(number): `\(skill)`\(tag)")
         }
     } else {
-        md.append("_No skills were invoked during this session._")
+        markdown.append("_No skills were invoked during this session._")
     }
-    md.append("")
+    markdown.append("")
 
     if includeSubagents && !parsed.subagents.isEmpty {
-        md.append("## Subagents\n")
-        md.append("| Agent ID | Type | Turns | Duration | Description |")
-        md.append("|---|---|---:|---:|---|")
-        for sa in parsed.subagents {
-            var d = sa.desc
-            if d.count > 60 {
-                d = String(d.prefix(60)) + "..."
+        markdown.append("## Subagents\n")
+        markdown.append("| Agent ID | Type | Turns | Duration | Description |")
+        markdown.append("|---|---|---:|---:|---|")
+        for subagent in parsed.subagents {
+            var description = subagent.description
+            if description.count > 60 {
+                description = String(description.prefix(60)) + "..."
             }
-            md.append("| `\(sa.id)` | \(sa.type) | \(sa.turns.count) | \(dur(sa.duration)) min | \(d) |")
+            markdown.append("| `\(subagent.id)` | \(subagent.type) | \(subagent.turns.count) | \(subagent.duration.minutesString) min | \(description) |")
         }
-        md.append("")
+        markdown.append("")
     }
 
-    md.append("## Build Analysis\n")
-    md.append("- **Attempts:** \(attempts) (\(buildOk) success, \(buildFix) failed)")
-    md.append("- **build-and-run.sh:** \(buildStatus)")
-    md.append("")
+    markdown.append("## Build Analysis\n")
+    markdown.append("- **Attempts:** \(attempts) (\(buildOk) success, \(buildFix) failed)")
+    markdown.append("- **build-and-run.sh:** \(buildStatus)")
+    markdown.append("")
     if !buildErrors.isEmpty {
-        md.append("**Build errors encountered:**\n")
-        for (n, errs) in buildErrors {
-            md.append("Turn \(n):")
-            for e in errs {
-                md.append("- `\(e)`")
+        markdown.append("**Build errors encountered:**\n")
+        for (number, errors) in buildErrors {
+            markdown.append("Turn \(number):")
+            for error in errors {
+                markdown.append("- `\(error)`")
             }
         }
-        md.append("")
+        markdown.append("")
     }
 
     if !stuck.isEmpty {
-        md.append("## Stuck Patterns\n")
-        for s in stuck {
-            md.append("- \(s)")
+        markdown.append("## Stuck Patterns\n")
+        for pattern in stuck {
+            markdown.append("- \(pattern)")
         }
-        md.append("")
+        markdown.append("")
     }
 
-    md.append("## Turn Detail\n")
-    md.append("_Parent session._\n")
-    md.append("| # | Category | Tokens | Tools |")
-    md.append("|--:|----------|-------:|-------|")
-    for t in parsed.turns {
-        md.append("| \(t.n) | \(t.category) | \(grouped(t.outTokens)) | \(toolList(t)) |")
+    markdown.append("## Turn Detail\n")
+    markdown.append("_Parent session._\n")
+    markdown.append("| # | Category | Tokens | Tools |")
+    markdown.append("|--:|----------|-------:|-------|")
+    for turn in parsed.turns {
+        markdown.append("| \(turn.number) | \(turn.category) | \(turn.outputTokens.groupedDigits) | \(turn.toolListDescription) |")
     }
-    md.append("")
+    markdown.append("")
     if includeSubagents {
-        for sa in parsed.subagents {
-            md.append("_Subagent `\(sa.type)` (id `\(sa.id)`)._\n")
-            md.append("| # | Category | Tokens | Tools |")
-            md.append("|--:|----------|-------:|-------|")
-            for t in sa.turns {
-                md.append("| \(t.n) | \(t.category) | \(grouped(t.outTokens)) | \(toolList(t)) |")
+        for subagent in parsed.subagents {
+            markdown.append("_Subagent `\(subagent.type)` (id `\(subagent.id)`)._\n")
+            markdown.append("| # | Category | Tokens | Tools |")
+            markdown.append("|--:|----------|-------:|-------|")
+            for turn in subagent.turns {
+                markdown.append("| \(turn.number) | \(turn.category) | \(turn.outputTokens.groupedDigits) | \(turn.toolListDescription) |")
             }
-            md.append("")
+            markdown.append("")
         }
     }
 
-    return md.joined(separator: "\n")
+    return markdown.joined(separator: "\n")
 }
 
-// Stable sort by turns descending, preserving insertion order for ties.
-func stableSortByTurnsDesc(order: [String], counts: [String: (turns: Int, tokens: Int)])
+/// Returns the categories sorted by turn count descending, preserving insertion
+/// order for ties.
+func stableSortByTurnsDescending(order: [String], counts: [String: (turns: Int, tokens: Int)])
     -> [(String, (turns: Int, tokens: Int))] {
-    let indexed = order.enumerated().map { (idx, key) in (idx, key, counts[key]!) }
-    let sorted = indexed.sorted { a, b in
-        if a.2.turns != b.2.turns { return a.2.turns > b.2.turns }
-        return a.0 < b.0
+    let indexed = order.enumerated().map { (index, key) in (index, key, counts[key]!) }
+    let sorted = indexed.sorted { lhs, rhs in
+        if lhs.2.turns != rhs.2.turns { return lhs.2.turns > rhs.2.turns }
+        return lhs.0 < rhs.0
     }
     return sorted.map { ($0.1, $0.2) }
 }
@@ -1200,17 +1275,18 @@ let privacyNotice = """
 
 """
 
+/// Returns `report` with the privacy notice inserted just before `## Overview`.
 func insertPrivacy(_ report: String) -> String {
     let lines = report.components(separatedBy: "\n")
-    var idx = 1
-    for (i, l) in lines.enumerated() {
-        if l.hasPrefix("## Overview") { idx = i; break }
+    var insertionIndex = 1
+    for (index, line) in lines.enumerated() {
+        if line.hasPrefix("## Overview") { insertionIndex = index; break }
     }
     var result: [String] = []
-    result.append(contentsOf: lines[0..<idx])
+    result.append(contentsOf: lines[0..<insertionIndex])
     result.append(privacyNotice)
     result.append("")
-    result.append(contentsOf: lines[idx...])
+    result.append(contentsOf: lines[insertionIndex...])
     return result.joined(separator: "\n")
 }
 
@@ -1218,96 +1294,98 @@ func insertPrivacy(_ report: String) -> String {
 // Main
 // --------------------------------------------------------------------------- //
 
-func parseArgs(_ argv: [String]) -> (sessionId: String?, eventsFile: String?, output: String?, skipSubagents: Bool) {
-    var sessionId: String? = nil
+/// Parses the command-line arguments into their resolved values.
+func parseArgs(_ arguments: [String]) -> (sessionID: String?, eventsFile: String?, output: String?, skipSubagents: Bool) {
+    var sessionID: String? = nil
     var eventsFile: String? = nil
     var output: String? = nil
-    var skip = false
-    var i = 1
-    while i < argv.count {
-        let a = argv[i]
-        switch a {
+    var skipSubagents = false
+    var index = 1
+    while index < arguments.count {
+        let argument = arguments[index]
+        switch argument {
         case "--session-id":
-            i += 1; if i < argv.count { sessionId = argv[i] }
+            index += 1; if index < arguments.count { sessionID = arguments[index] }
         case "--events-file":
-            i += 1; if i < argv.count { eventsFile = argv[i] }
+            index += 1; if index < arguments.count { eventsFile = arguments[index] }
         case "--output":
-            i += 1; if i < argv.count { output = argv[i] }
+            index += 1; if index < arguments.count { output = arguments[index] }
         case "--skip-subagents":
-            skip = true
+            skipSubagents = true
         default:
-            if a.hasPrefix("--session-id=") { sessionId = String(a.dropFirst("--session-id=".count)) }
-            else if a.hasPrefix("--events-file=") { eventsFile = String(a.dropFirst("--events-file=".count)) }
-            else if a.hasPrefix("--output=") { output = String(a.dropFirst("--output=".count)) }
+            if argument.hasPrefix("--session-id=") { sessionID = String(argument.dropFirst("--session-id=".count)) }
+            else if argument.hasPrefix("--events-file=") { eventsFile = String(argument.dropFirst("--events-file=".count)) }
+            else if argument.hasPrefix("--output=") { output = String(argument.dropFirst("--output=".count)) }
         }
-        i += 1
+        index += 1
     }
-    return (sessionId, eventsFile, output, skip)
+    return (sessionID, eventsFile, output, skipSubagents)
 }
 
+/// Runs the analyzer end-to-end and returns the process exit code.
 func runMain() -> Int32 {
-    let argv = CommandLine.arguments
-    let args = parseArgs(argv)
-    let fm = FileManager.default
+    let arguments = CommandLine.arguments
+    let parsedArguments = parseArgs(arguments)
+    let fileManager = FileManager.default
 
     var path: URL
-    if let ef = args.eventsFile {
-        path = URL(fileURLWithPath: ef)
-        if !fm.fileExists(atPath: path.path) {
-            FileHandle.standardError.write("Events file not found: \(ef)\n".data(using: .utf8)!)
+    if let eventsFile = parsedArguments.eventsFile {
+        path = URL(fileURLWithPath: eventsFile)
+        if !fileManager.fileExists(atPath: path.path) {
+            FileHandle.standardError.write("Events file not found: \(eventsFile)\n".data(using: .utf8)!)
             return 1
         }
-    } else if let sid = args.sessionId {
-        guard let found = findSessionById(sid) else {
+    } else if let sessionID = parsedArguments.sessionID {
+        guard let found = findSession(byID: sessionID) else {
             FileHandle.standardError.write(
-                "Session id '\(sid)' not found under \(projectsRoot().path)\n".data(using: .utf8)!)
+                "Session id '\(sessionID)' not found under \(projectsRoot().path)\n".data(using: .utf8)!)
             return 1
         }
         path = found
     } else {
-        let envSid = ProcessInfo.processInfo.environment["CLAUDE_SESSION_ID"]
+        let environmentSessionID = ProcessInfo.processInfo.environment["CLAUDE_SESSION_ID"]
         var found: URL? = nil
-        if let es = envSid {
-            found = findSessionById(es)
+        if let environmentSessionID = environmentSessionID {
+            found = findSession(byID: environmentSessionID)
         }
         if found == nil {
-            found = findLatestSession(preferCwd: fm.currentDirectoryPath)
+            found = findLatestSession(preferredCwd: fileManager.currentDirectoryPath)
         }
-        guard let f = found else {
+        guard let resolved = found else {
             FileHandle.standardError.write(
                 "No Claude Code sessions found under \(projectsRoot().path)\n".data(using: .utf8)!)
             FileHandle.standardError.write(
                 "If you use a different agent harness, this analyzer doesn't support it yet.\n".data(using: .utf8)!)
             return 1
         }
-        path = f
+        path = resolved
     }
 
-    let includeSubagents = !args.skipSubagents
+    let includeSubagents = !parsedArguments.skipSubagents
     let parsed = parseSession(path, isSubagent: false, includeSubagents: includeSubagents)
-    for t in parsed.turns {
-        t.category = categorize(t)
+    for turn in parsed.turns {
+        turn.category = turn.classified
     }
-    for si in 0..<parsed.subagents.count {
-        for t in parsed.subagents[si].turns {
-            t.category = categorize(t)
+    for subagentIndex in 0..<parsed.subagents.count {
+        for turn in parsed.subagents[subagentIndex].turns {
+            turn.category = turn.classified
         }
     }
 
     let report = insertPrivacy(render(parsed, includeSubagents: includeSubagents && !parsed.subagents.isEmpty))
 
-    if let out = args.output {
+    if let output = parsedArguments.output {
         do {
-            try report.write(toFile: out, atomically: true, encoding: .utf8)
+            try report.write(toFile: output, atomically: true, encoding: .utf8)
         } catch {
-            FileHandle.standardError.write("Failed to write \(out): \(error)\n".data(using: .utf8)!)
+            FileHandle.standardError.write("Failed to write \(output): \(error)\n".data(using: .utf8)!)
             return 1
         }
-        print("\nReport saved to: \(out)")
+        print("\nReport saved to: \(output)")
         let banner = String(repeating: "=", count: 64)
         let lines = [
             banner,
-            " PRIVACY NOTICE — READ BEFORE SHARING \(out)",
+            " PRIVACY NOTICE — READ BEFORE SHARING \(output)",
             banner,
             " This report contains your unredacted session transcript:",
             "   * file contents and paths the agent read or edited",
