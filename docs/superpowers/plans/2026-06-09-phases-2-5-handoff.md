@@ -34,7 +34,7 @@ appkit-liquid-glass-concentricity  ✅ SKILL.md (WWDC-26 draft — has a "TBD in
 appkit-design                      ✅ SHIPPED (Phase 2, merged main 7a3dfd4) — SKILL.md + 9 references, tool-wired, GREEN-verified
 appkit-private-apis                ✅ SHIPPED (Phase 3) — SKILL.md + 4 refs; PrivateHeaderKit + declare/call + swizzling
 appkit-app-inspector               ✅ SHIPPED (Phase 3) — SKILL.md + 4 refs; drives flexscope's frozen CLI contract
-appkit-session-report              ✅ SHIPPED (Phase 4) — SKILL.md wraps analyze-session.py (privacy-gated, user-invoked)
+appkit-session-report              ✅ SHIPPED (Phase 4) — SKILL.md wraps analyze-session.swift (privacy-gated, user-invoked)
 ```
 
 **Important:** all 9 existing SKILL.md files were copied **verbatim** from `resources/` in Phase 0 and have **never been quality-edited**. They are drafts. Phase 5 is the polish pass; but if you touch any of them earlier, the writing-skills Iron Law applies (see §"Process rules" below).
