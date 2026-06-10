@@ -1,4 +1,6 @@
 import Foundation
+import Subprocess
+import System
 
 public struct Extractor: Sendable {
     public init() {}
@@ -38,22 +40,22 @@ public struct Extractor: Sendable {
         }
     }
 
-    public func sdkPath() throws -> String { try Self.run("/usr/bin/xcrun", ["--sdk", "macosx", "--show-sdk-path"]) }
-    public func sdkVersion() throws -> String { try Self.run("/usr/bin/xcrun", ["--sdk", "macosx", "--show-sdk-version"]) }
+    public func sdkPath() async throws -> String { try await Self.output(of: "/usr/bin/xcrun", arguments: ["--sdk", "macosx", "--show-sdk-path"]) }
+    public func sdkVersion() async throws -> String { try await Self.output(of: "/usr/bin/xcrun", arguments: ["--sdk", "macosx", "--show-sdk-version"]) }
 
     /// Ensure the symbol graphs for `module` are present in cache; extract if missing. Returns the cache dir.
     @discardableResult
-    public func ensureExtracted(module: String) throws -> URL {
-        let version = try sdkVersion()
+    public func ensureExtracted(module: String) async throws -> URL {
+        let version = try await sdkVersion()
         let dir = Self.cacheDir(sdkVersion: version, module: module)
         let primary = dir.appendingPathComponent("\(module).symbols.json")
         if FileManager.default.fileExists(atPath: primary.path) { return dir }
 
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let sdk = try sdkPath()
+        let sdk = try await sdkPath()
         let target = Self.targetTriple(sdkVersion: version)
         let args = Self.extractArguments(module: module, sdkPath: sdk, target: target, outputDir: dir.path)
-        _ = try Self.run("/usr/bin/swift", args)
+        _ = try await Self.output(of: "/usr/bin/swift", arguments: args)
         guard FileManager.default.fileExists(atPath: primary.path) else { throw ExtractorError.noGraphs(dir) }
         return dir
     }
@@ -71,31 +73,33 @@ public struct Extractor: Sendable {
     }
 
     /// Build a ready-to-query index for a module (extracting + caching as needed).
-    public func index(module: String) throws -> SymbolIndex {
-        let dir = try ensureExtracted(module: module)
+    public func index(module: String) async throws -> SymbolIndex {
+        let dir = try await ensureExtracted(module: module)
         return SymbolIndex(graphs: try loadGraphs(in: dir, module: module))
     }
 
-    /// Runs a subprocess synchronously and returns its stdout as a trimmed string.
-    /// Reads pipes *after* `waitUntilExit()` — intended for short-output commands such as
-    /// `xcrun` or the `swift` driver (whose symbol graphs go to `-output-dir`, not stdout).
-    /// A command that emits more than the pipe buffer (~64 KB) to stdout/stderr could deadlock.
+    /// Runs a subprocess (via swift-subprocess) and returns its stdout as a trimmed string.
+    /// Intended for short-output commands such as `xcrun` or the `swift` driver (whose symbol
+    /// graphs go to `-output-dir`, not stdout). The 8 MiB collection limit is far above what
+    /// these commands emit, so output is never truncated in practice.
     @discardableResult
-    static func run(_ launchPath: String, _ args: [String]) throws -> String {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: launchPath)
-        proc.arguments = args
-        let out = Pipe(); let err = Pipe()
-        proc.standardOutput = out; proc.standardError = err
-        try proc.run(); proc.waitUntilExit()
-        let outData = out.fileHandleForReading.readDataToEndOfFile()
-        let errData = err.fileHandleForReading.readDataToEndOfFile()
-        let outStr = String(decoding: outData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        if proc.terminationStatus != 0 {
-            throw ExtractorError.command("\(launchPath) \(args.joined(separator: " "))",
-                                         proc.terminationStatus,
-                                         String(decoding: errData, as: UTF8.self))
+    static func output(of launchPath: String, arguments args: [String]) async throws -> String {
+        let result = try await Subprocess.run(
+            .path(FilePath(launchPath)),
+            arguments: Arguments(args),
+            output: .string(limit: 8 * 1024 * 1024),
+            error: .string(limit: 8 * 1024 * 1024)
+        )
+        if case .exited(0) = result.terminationStatus {
+            return (result.standardOutput ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        return outStr
+        let code: Int32
+        switch result.terminationStatus {
+        case let .exited(c): code = c
+        case let .signaled(c): code = c
+        }
+        throw ExtractorError.command("\(launchPath) \(args.joined(separator: " "))",
+                                     code,
+                                     result.standardError ?? "")
     }
 }
