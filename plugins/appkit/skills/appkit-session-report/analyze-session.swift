@@ -6,27 +6,249 @@
 // Single-file hashbang Swift port of analyze-session.py. Foundation only.
 // This is a fidelity port: the Python source is the spec; output is byte-identical.
 //
+// JSON layer: the transcript is modelled with Codable and decoded via
+// JSONDecoder. Most shapes use synthesized Decodable (event envelope, Usage,
+// Message); the genuinely-dynamic tool `input` / tool_result `content` payloads
+// use a recursive `JSONValue` enum with a custom decoder. ContentBlock is
+// decoded on its `type` discriminator with an `.other` catch-all so unknown
+// block types never throw. Small wrapper types replicate Python's lenient
+// truthiness (isMeta/isSidechain/is_error) and str()-stringification (cwd, ids).
+//
 
 import Foundation
 
 // --------------------------------------------------------------------------- //
-// JSON helpers — mirror Python dict access over heterogeneous objects.
+// JSONValue — recursive model for genuinely-dynamic payloads.
+//
+// Decode order is bool -> int -> double -> string -> array -> object. Unlike
+// NSNumber (which conflates `true` with `1`), JSONDecoder cleanly distinguishes
+// a JSON boolean from a JSON number, so trying Bool first is safe and exact.
 // --------------------------------------------------------------------------- //
 
-typealias JObj = [String: Any]
+indirect enum JSONValue: Decodable {
+    case null
+    case bool(Bool)
+    case int(Int)
+    case double(Double)
+    case string(String)
+    case array([JSONValue])
+    case object([String: JSONValue])
 
-func asObj(_ v: Any?) -> JObj { (v as? JObj) ?? [:] }
-func asArr(_ v: Any?) -> [Any]? { v as? [Any] }
-func asStr(_ v: Any?) -> String? {
-    if let s = v as? String { return s }
-    return nil
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() {
+            self = .null
+        } else if let b = try? c.decode(Bool.self) {
+            self = .bool(b)
+        } else if let i = try? c.decode(Int.self) {
+            self = .int(i)
+        } else if let d = try? c.decode(Double.self) {
+            self = .double(d)
+        } else if let s = try? c.decode(String.self) {
+            self = .string(s)
+        } else if let a = try? c.decode([JSONValue].self) {
+            self = .array(a)
+        } else if let o = try? c.decode([String: JSONValue].self) {
+            self = .object(o)
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: c, debugDescription: "Unsupported JSON value")
+        }
+    }
+
+    // The genuine string value, or nil for any non-string.
+    var asString: String? {
+        if case let .string(s) = self { return s }
+        return nil
+    }
+
+    // Object/array member access; nil for non-containers or missing keys.
+    subscript(_ key: String) -> JSONValue? {
+        if case let .object(o) = self { return o[key] }
+        return nil
+    }
+
+    var isNull: Bool {
+        if case .null = self { return true }
+        return false
+    }
+
+    var objectValue: [String: JSONValue]? {
+        if case let .object(o) = self { return o }
+        return nil
+    }
+
+    var arrayValue: [JSONValue]? {
+        if case let .array(a) = self { return a }
+        return nil
+    }
+
+    // Python str(x) over a JSON value reachable from a dict. None -> "None",
+    // strings pass through, everything else uses a repr-ish form. Used for ids
+    // and skill/agent names where Python applies str().
+    var pyStr: String {
+        switch self {
+        case .null: return "None"
+        case let .bool(b): return b ? "True" : "False"
+        case let .int(i): return String(i)
+        case let .double(d): return "\(d)"
+        case let .string(s): return s
+        case let .array(a): return "\(a)"
+        case let .object(o): return "\(o)"
+        }
+    }
 }
-// Python int(x or 0) over possibly-Double/Int/NSNumber values.
-func asInt(_ v: Any?) -> Int {
-    if let n = v as? NSNumber { return n.intValue }
-    if let i = v as? Int { return i }
-    if let d = v as? Double { return Int(d) }
-    return 0
+
+// --------------------------------------------------------------------------- //
+// ContentBlock — decoded on the `type` discriminator, with an `.other`
+// catch-all so unknown block types are tolerated (forward-compat).
+// --------------------------------------------------------------------------- //
+
+enum ContentBlock: Decodable {
+    case text(String)
+    case toolUse(id: JSONValue?, name: String?, input: JSONValue)
+    case toolResult(toolUseId: JSONValue?, content: JSONValue?, isError: Truthy)
+    case thinking
+    case other(String)
+
+    private enum CodingKeys: String, CodingKey {
+        case type, text, id, name, input
+        case toolUseId = "tool_use_id"
+        case content
+        case isError = "is_error"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let type = (try? c.decode(String.self, forKey: .type)) ?? ""
+        switch type {
+        case "text":
+            let t = (try? c.decode(String.self, forKey: .text)) ?? ""
+            self = .text(t)
+        case "tool_use":
+            let id = try? c.decode(JSONValue.self, forKey: .id)
+            let name = try? c.decode(String.self, forKey: .name)
+            let input = (try? c.decode(JSONValue.self, forKey: .input)) ?? .object([:])
+            self = .toolUse(id: id, name: name, input: input)
+        case "tool_result":
+            let tid = try? c.decode(JSONValue.self, forKey: .toolUseId)
+            let content = try? c.decode(JSONValue.self, forKey: .content)
+            let isErr = (try? c.decode(Truthy.self, forKey: .isError)) ?? Truthy(false)
+            self = .toolResult(toolUseId: tid, content: content, isError: isErr)
+        case "thinking":
+            self = .thinking
+        default:
+            self = .other(type)
+        }
+    }
+}
+
+// --------------------------------------------------------------------------- //
+// Truthy — lenient decode of a value that appears as bool | number | null.
+// Mirrors Python's `if obj.get(x)` truthiness. JSONDecoder cleanly separates
+// Bool from Int, so this is simpler than the NSNumber-or-Bool double-check.
+// --------------------------------------------------------------------------- //
+
+struct Truthy: Decodable {
+    let value: Bool
+    init(_ v: Bool) { self.value = v }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() {
+            value = false
+        } else if let b = try? c.decode(Bool.self) {
+            value = b
+        } else if let i = try? c.decode(Int.self) {
+            value = i != 0
+        } else if let d = try? c.decode(Double.self) {
+            value = d != 0
+        } else {
+            value = false
+        }
+    }
+}
+
+// --------------------------------------------------------------------------- //
+// MessageContent — `content` is either a JSON string or an array of blocks.
+// Custom decode tries the array form first, then the string form.
+// --------------------------------------------------------------------------- //
+
+enum MessageContent: Decodable {
+    case string(String)
+    case array([ContentBlock])
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let arr = try? c.decode([ContentBlock].self) {
+            self = .array(arr)
+        } else if let s = try? c.decode(String.self) {
+            self = .string(s)
+        } else {
+            self = .string("")
+        }
+    }
+
+    var stringValue: String? {
+        if case let .string(s) = self { return s }
+        return nil
+    }
+
+    var arrayValue: [ContentBlock]? {
+        if case let .array(a) = self { return a }
+        return nil
+    }
+}
+
+// --------------------------------------------------------------------------- //
+// Usage / Message / Event — stable shapes, synthesized Decodable. The
+// synthesized Decodable for Usage silently ignores the other ~7 usage keys;
+// optional fields tolerate absence. CodingKeys map the snake_case JSON.
+// --------------------------------------------------------------------------- //
+
+struct Usage: Decodable {
+    let output_tokens: Int?
+    let cache_read_input_tokens: Int?
+    let cache_creation_input_tokens: Int?
+}
+
+struct Message: Decodable {
+    let model: String?
+    let usage: Usage?
+    let content: MessageContent?
+}
+
+struct Event: Decodable {
+    let type: String?
+    let sessionId: String?
+    let timestamp: String?
+    let cwd: CwdString?
+    let isMeta: Truthy?
+    let isSidechain: Truthy?
+    let message: Message?
+}
+
+// cwd: Python keeps a non-empty string as-is, else str()s a truthy non-null
+// value. Models that exact behaviour. A JSON null decodes to .none here because
+// the field itself is optional in Event; but a present JSON null still needs to
+// be distinguishable from a string, so we decode through a wrapper that records
+// whether the underlying value was a usable string or a stringified other.
+struct CwdString: Decodable {
+    let raw: JSONValue
+    init(from decoder: Decoder) throws {
+        raw = try JSONValue(from: decoder)
+    }
+    // The cwd resolved per Python firstCwd semantics: non-empty string, or the
+    // str() of a truthy non-null value; nil otherwise.
+    var resolved: String? {
+        switch raw {
+        case .null:
+            return nil
+        case let .string(s):
+            return s.isEmpty ? nil : s
+        default:
+            return raw.pyStr
+        }
+    }
 }
 
 // --------------------------------------------------------------------------- //
@@ -54,6 +276,19 @@ func dur(_ x: Double) -> String {
 }
 
 // --------------------------------------------------------------------------- //
+// JSON decoding helpers
+// --------------------------------------------------------------------------- //
+
+let jsonDecoder = JSONDecoder()
+
+// Decode a single transcript line into an Event; nil if the line is not a JSON
+// object that decodes (per-line robustness: a bad line is skipped, not fatal).
+func decodeEvent(_ line: String) -> Event? {
+    guard let d = line.data(using: .utf8) else { return nil }
+    return try? jsonDecoder.decode(Event.self, from: d)
+}
+
+// --------------------------------------------------------------------------- //
 // Locating the transcript
 // --------------------------------------------------------------------------- //
 
@@ -62,15 +297,14 @@ func projectsRoot() -> URL {
     return home.appendingPathComponent(".claude").appendingPathComponent("projects")
 }
 
-func readJsonl(_ path: URL) -> [JObj] {
-    var events: [JObj] = []
+func readJsonl(_ path: URL) -> [Event] {
+    var events: [Event] = []
     guard let data = try? String(contentsOf: path, encoding: .utf8) else { return events }
     for rawLine in data.split(separator: "\n", omittingEmptySubsequences: false) {
         let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
         if line.isEmpty { continue }
-        guard let d = line.data(using: .utf8) else { continue }
-        if let obj = try? JSONSerialization.jsonObject(with: d), let o = obj as? JObj {
-            events.append(o)
+        if let ev = decodeEvent(line) {
+            events.append(ev)
         }
     }
     return events
@@ -84,14 +318,9 @@ func firstCwd(_ path: URL) -> String? {
         let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
         i += 1
         if line.isEmpty { continue }
-        guard let d = line.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: d),
-              let o = obj as? JObj else { continue }
-        if let cwd = o["cwd"], let s = cwd as? String, !s.isEmpty {
-            return s
-        } else if let cwd = o["cwd"], !(cwd is NSNull) {
-            // Non-string truthy cwd: stringify like str(obj["cwd"]).
-            return "\(cwd)"
+        guard let ev = decodeEvent(line) else { continue }
+        if let resolved = ev.cwd?.resolved {
+            return resolved
         }
     }
     return nil
@@ -255,24 +484,21 @@ func splitLines(_ s: String) -> [String] {
 // Parsing
 // --------------------------------------------------------------------------- //
 
-func extractPrompt(_ events: [JObj]) -> String {
+func extractPrompt(_ events: [Event]) -> String {
     for ev in events {
-        if asStr(ev["type"]) != "user" { continue }
-        if let m = ev["isMeta"] as? NSNumber, m.boolValue { continue }
-        if let m = ev["isMeta"] as? Bool, m { continue }
-        if let sc = ev["isSidechain"] as? NSNumber, sc.boolValue { continue }
-        if let sc = ev["isSidechain"] as? Bool, sc { continue }
-        let content = asObj(ev["message"])["content"]
+        if ev.type != "user" { continue }
+        if ev.isMeta?.value == true { continue }
+        if ev.isSidechain?.value == true { continue }
+        let content = ev.message?.content
         var cand: String? = nil
-        if let s = content as? String {
+        if let s = content?.stringValue {
             cand = s
-        } else if let arr = asArr(content) {
-            let hasToolResult = arr.contains { asStr(asObj($0)["type"]) == "tool_result" }
+        } else if let arr = content?.arrayValue {
+            let hasToolResult = arr.contains { if case .toolResult = $0 { return true } else { return false } }
             var texts: [String] = []
             for b in arr {
-                let bo = asObj(b)
-                if asStr(bo["type"]) == "text" {
-                    texts.append(asStr(bo["text"]) ?? "")
+                if case let .text(t) = b {
+                    texts.append(t)
                 }
             }
             if !hasToolResult && !texts.isEmpty {
@@ -293,7 +519,7 @@ func extractPrompt(_ events: [JObj]) -> String {
 
 struct Tool {
     var name: String
-    var args: JObj
+    var args: JSONValue   // the tool_use `input` object (or .object([:]))
     var error: Bool
     var errs: [String]
 }
@@ -325,6 +551,13 @@ struct Parsed {
     var prompt: String
     var turns: [Turn]
     var subagents: [Subagent]
+}
+
+// Agent metadata sidecar (stable keys, synthesized Decodable). Both fields are
+// optional so absence is tolerated; presence vs. absence drives the fallback.
+struct AgentMeta: Decodable {
+    let agentType: String?
+    let description: String?
 }
 
 // Parse ISO timestamp like "2026-06-05T04:44:27.709Z" -> seconds since epoch.
@@ -399,69 +632,54 @@ func parseSession(_ path: URL, isSubagent: Bool = false, includeSubagents: Bool 
     let events = readJsonl(path)
     let prompt = extractPrompt(events)
     let stem = path.deletingPathExtension().lastPathComponent
-    var sid: String
-    if let first = events.first, let s = asStr(first["sessionId"]) {
-        sid = s
-    } else {
-        sid = stem
-    }
     // Python: sid = (events[0].get("sessionId") if events else None) or path.stem
     // If sessionId is missing/empty/None, fall back to stem.
-    if events.isEmpty || asStr(events.first?["sessionId"]).map({ $0.isEmpty }) ?? true {
-        sid = stem
+    var sid: String = stem
+    if let first = events.first, let s = first.sessionId, !s.isEmpty {
+        sid = s
     }
 
     // model
     var model = "(unknown)"
-    if let firstAssistant = events.first(where: { asStr($0["type"]) == "assistant" }) {
-        let m = asObj(firstAssistant["message"])["model"]
-        if let ms = asStr(m) { model = ms }
-        else if m == nil { model = "(unknown)" }
-        else { model = "\(m!)" }
+    if let firstAssistant = events.first(where: { $0.type == "assistant" }) {
+        if let ms = firstAssistant.message?.model {
+            model = ms
+        } else {
+            model = "(unknown)"
+        }
     }
 
     // duration
     var times: [Double] = []
     for ev in events {
-        if let ts = asStr(ev["timestamp"]), !ts.isEmpty {
+        if let ts = ev.timestamp, !ts.isEmpty {
             if let t = parseTimestamp(ts) {
                 times.append(t)
             }
         }
     }
     let durationMin = times.count >= 2 ? (times[times.count - 1] - times[0]) / 60.0 : 0.0
-    // Note: Python rounds here, but we keep full precision and format with %.1f
-    // at render time (round(x,1) == %.1f byte-for-byte). For duration stored in
-    // the struct we store the rounded value to match how Python stores it, but
-    // since rendering always uses dur() == %.1f, store raw and round at render.
 
     // tool_results keyed by tool_use_id
     var toolResults: [String: (text: String, isError: Bool)] = [:]
     for ev in events {
-        if asStr(ev["type"]) == "user", let arr = asArr(asObj(ev["message"])["content"]) {
+        if ev.type == "user", let arr = ev.message?.content?.arrayValue {
             for block in arr {
-                let b = asObj(block)
-                if asStr(b["type"]) == "tool_result" {
-                    let c = b["content"]
+                if case let .toolResult(toolUseId, content, isError) = block {
                     var txt = ""
-                    if let cs = c as? String {
+                    if let cs = content?.asString {
                         txt = cs
-                    } else if let carr = asArr(c) {
+                    } else if let carr = content?.arrayValue {
                         var parts: [String] = []
                         for i in carr {
-                            let io = asObj(i)
-                            if asStr(io["type"]) == "text" {
-                                parts.append(asStr(io["text"]) ?? "")
+                            if let t = i["type"]?.asString, t == "text" {
+                                parts.append(i["text"]?.asString ?? "")
                             }
                         }
                         txt = parts.joined(separator: "\n")
                     }
-                    let isErr: Bool
-                    if let ne = b["is_error"] as? NSNumber { isErr = ne.boolValue }
-                    else if let be = b["is_error"] as? Bool { isErr = be }
-                    else { isErr = false }
-                    let key = stringifyId(b["tool_use_id"])
-                    toolResults[key] = (txt, isErr)
+                    let key = stringifyId(toolUseId)
+                    toolResults[key] = (txt, isError.value)
                 }
             }
         }
@@ -470,32 +688,29 @@ func parseSession(_ path: URL, isSubagent: Bool = false, includeSubagents: Bool 
     var turns: [Turn] = []
     var turnNum = 0
     for ev in events {
-        if asStr(ev["type"]) != "assistant" { continue }
+        if ev.type != "assistant" { continue }
         if !isSubagent {
-            if let sc = ev["isSidechain"] as? NSNumber, sc.boolValue { continue }
-            if let sc = ev["isSidechain"] as? Bool, sc { continue }
+            if ev.isSidechain?.value == true { continue }
         }
         turnNum += 1
-        let usage = asObj(asObj(ev["message"])["usage"])
+        let usage = ev.message?.usage
         let turn = Turn(n: turnNum)
-        turn.outTokens = asInt(usage["output_tokens"])
-        turn.cacheRead = asInt(usage["cache_read_input_tokens"])
-        turn.cacheCreate = asInt(usage["cache_creation_input_tokens"])
-        let content = asObj(ev["message"])["content"]
-        if let arr = asArr(content) {
+        turn.outTokens = usage?.output_tokens ?? 0
+        turn.cacheRead = usage?.cache_read_input_tokens ?? 0
+        turn.cacheCreate = usage?.cache_creation_input_tokens ?? 0
+        if let arr = ev.message?.content?.arrayValue {
             for block in arr {
-                let b = asObj(block)
-                if asStr(b["type"]) != "tool_use" { continue }
-                let callId = stringifyId(b["id"])
-                let args = asObj(b["input"])
-                let nname = normTool(asStr(b["name"]) ?? "")
+                guard case let .toolUse(id, name, input) = block else { continue }
+                let callId = stringifyId(id)
+                let args = input
+                let nname = normTool(name ?? "")
                 var tool = Tool(name: nname, args: args, error: false, errs: [])
-                if nname == "skill", let sk = args["skill"], !(sk is NSNull) {
-                    turn.skills.append(stringifyId(sk))
+                if nname == "skill", let sk = args["skill"], !sk.isNull {
+                    turn.skills.append(sk.pyStr)
                 }
                 if nname == "agent" {
-                    if let st = args["subagent_type"], !(st is NSNull) {
-                        turn.agents.append(stringifyId(st))
+                    if let st = args["subagent_type"], !st.isNull {
+                        turn.agents.append(st.pyStr)
                     } else {
                         turn.agents.append("general-purpose")
                     }
@@ -537,26 +752,28 @@ func parseSession(_ path: URL, isSubagent: Bool = false, includeSubagents: Bool 
                 let afStem = af.deletingPathExtension().lastPathComponent
                 let agentId = afStem.hasPrefix("agent-")
                     ? String(afStem.dropFirst("agent-".count)) : afStem
-                var meta: JObj = [:]
+                var meta: AgentMeta? = nil
                 let metaPath = af.deletingLastPathComponent()
                     .appendingPathComponent("agent-\(agentId).meta.json")
                 if fm.fileExists(atPath: metaPath.path) {
                     if let data = try? Data(contentsOf: metaPath),
-                       let obj = try? JSONSerialization.jsonObject(with: data),
-                       let o = obj as? JObj {
-                        meta = o
+                       let m = try? jsonDecoder.decode(AgentMeta.self, from: data) {
+                        meta = m
                     }
                 }
                 let sub = parseSession(af, isSubagent: true, includeSubagents: false)
-                let aType = asStr(meta["agentType"]) ?? "(unknown)"
-                let aDesc = asStr(meta["description"]) ?? ""
+                // Python: meta.get("agentType", "(unknown)") / meta.get("description", "").
+                // Missing key -> default; present (even if non-string) -> str(). Here a
+                // present-but-non-string agentType would have failed String decode and
+                // landed as nil; the real data is always a string, matching Python.
+                let aType = meta?.agentType ?? "(unknown)"
+                let aDesc = meta?.description ?? ""
                 subagents.append(Subagent(
                     id: agentId,
-                    type: meta["agentType"] == nil ? "(unknown)" : (asStr(meta["agentType"]) ?? stringifyMaybe(meta["agentType"])),
-                    desc: meta["description"] == nil ? "" : (asStr(meta["description"]) ?? stringifyMaybe(meta["description"])),
+                    type: aType,
+                    desc: aDesc,
                     turns: sub.turns,
                     duration: sub.durationMin))
-                _ = aType; _ = aDesc
             }
         }
     }
@@ -565,19 +782,10 @@ func parseSession(_ path: URL, isSubagent: Bool = false, includeSubagents: Bool 
                   prompt: prompt, turns: turns, subagents: subagents)
 }
 
-func stringifyMaybe(_ v: Any?) -> String {
-    guard let v = v, !(v is NSNull) else { return "" }
-    if let s = v as? String { return s }
-    return "\(v)"
-}
-
-// Python str(x): for None -> "None"; for strings -> the string; else repr-ish.
-func stringifyId(_ v: Any?) -> String {
+// Python str(x) for an id-shaped value (tool_use_id / id). None -> "None".
+func stringifyId(_ v: JSONValue?) -> String {
     guard let v = v else { return "None" }
-    if v is NSNull { return "None" }
-    if let s = v as? String { return s }
-    if let n = v as? NSNumber { return n.stringValue }
-    return "\(v)"
+    return v.pyStr
 }
 
 // --------------------------------------------------------------------------- //
@@ -587,8 +795,10 @@ func stringifyId(_ v: Any?) -> String {
 func isShell(_ t: Tool) -> Bool { t.name == "shell" }
 func cmd(_ t: Tool) -> String {
     if isShell(t) {
-        if let c = t.args["command"], let s = c as? String { return s }
-        if let c = t.args["command"], !(c is NSNull) { return "\(c)" }
+        if let c = t.args["command"], !c.isNull {
+            if let s = c.asString { return s }
+            return c.pyStr
+        }
         return ""
     }
     return ""
@@ -654,18 +864,31 @@ func basename(_ p: String) -> String {
     return p
 }
 
-func argStr(_ args: JObj, _ key: String) -> String? {
-    guard let v = args[key], !(v is NSNull) else { return nil }
-    if let s = v as? String { return s }
-    return "\(v)"
+func argStr(_ args: JSONValue, _ key: String) -> String? {
+    guard let v = args[key], !v.isNull else { return nil }
+    if let s = v.asString { return s }
+    return v.pyStr
 }
 
 // Python truthiness for a.get("path") or a.get("file_path").
-func truthyStr(_ args: JObj, _ key: String) -> String? {
-    guard let v = args[key], !(v is NSNull) else { return nil }
-    if let s = v as? String { return s.isEmpty ? nil : s }
-    if let n = v as? NSNumber { return n.intValue == 0 && n.doubleValue == 0 ? nil : n.stringValue }
-    return "\(v)"
+func truthyStr(_ args: JSONValue, _ key: String) -> String? {
+    guard let v = args[key], !v.isNull else { return nil }
+    switch v {
+    case let .string(s):
+        return s.isEmpty ? nil : s
+    case let .bool(b):
+        return b ? "True" : nil
+    case let .int(i):
+        return i == 0 ? nil : String(i)
+    case let .double(d):
+        return d == 0 ? nil : v.pyStr
+    case let .array(a):
+        return a.isEmpty ? nil : v.pyStr
+    case let .object(o):
+        return o.isEmpty ? nil : v.pyStr
+    case .null:
+        return nil
+    }
 }
 
 func toolList(_ turn: Turn) -> String {
@@ -697,17 +920,32 @@ func toolList(_ turn: Turn) -> String {
     return parts.joined(separator: ", ") + skills
 }
 
+// Python str(x) for a value used as a summary; None/missing -> "".
+func stringifyMaybe(_ v: JSONValue?) -> String {
+    guard let v = v, !v.isNull else { return "" }
+    if let s = v.asString { return s }
+    return v.pyStr
+}
+
 // Python: elif a.get("pattern"): summ = str(a["pattern"])
-func truthyPattern(_ args: JObj) -> String? {
-    guard let v = args["pattern"], !(v is NSNull) else { return nil }
-    if let s = v as? String { return s.isEmpty ? nil : s }
-    if let n = v as? NSNumber {
-        if n.intValue == 0 && n.doubleValue == 0 { return nil }
-        return n.stringValue
+func truthyPattern(_ args: JSONValue) -> String? {
+    guard let v = args["pattern"], !v.isNull else { return nil }
+    switch v {
+    case let .string(s):
+        return s.isEmpty ? nil : s
+    case let .bool(b):
+        return b ? "True" : nil
+    case let .int(i):
+        return i == 0 ? nil : String(i)
+    case let .double(d):
+        return d == 0 ? nil : v.pyStr
+    case let .array(a):
+        return a.isEmpty ? nil : v.pyStr
+    case let .object(o):
+        return o.isEmpty ? nil : v.pyStr
+    case .null:
+        return nil
     }
-    if let arr = v as? [Any] { return arr.isEmpty ? nil : "\(v)" }
-    if let d = v as? [String: Any] { return d.isEmpty ? nil : "\(v)" }
-    return "\(v)"
 }
 
 func render(_ parsed: Parsed, includeSubagents: Bool) -> String {
@@ -1052,7 +1290,7 @@ func runMain() -> Int32 {
     }
 
     let includeSubagents = !args.skipSubagents
-    var parsed = parseSession(path, isSubagent: false, includeSubagents: includeSubagents)
+    let parsed = parseSession(path, isSubagent: false, includeSubagents: includeSubagents)
     for t in parsed.turns {
         t.category = categorize(t)
     }
