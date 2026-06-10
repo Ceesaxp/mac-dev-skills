@@ -57,7 +57,7 @@ indirect enum JSONValue: Decodable {
     }
 
     // The genuine string value, or nil for any non-string.
-    var asString: String? {
+    var stringValue: String? {
         if case let .string(s) = self { return s }
         return nil
     }
@@ -667,13 +667,13 @@ func parseSession(_ path: URL, isSubagent: Bool = false, includeSubagents: Bool 
             for block in arr {
                 if case let .toolResult(toolUseId, content, isError) = block {
                     var txt = ""
-                    if let cs = content?.asString {
+                    if let cs = content?.stringValue {
                         txt = cs
                     } else if let carr = content?.arrayValue {
                         var parts: [String] = []
                         for i in carr {
-                            if let t = i["type"]?.asString, t == "text" {
-                                parts.append(i["text"]?.asString ?? "")
+                            if let t = i["type"]?.stringValue, t == "text" {
+                                parts.append(i["text"]?.stringValue ?? "")
                             }
                         }
                         txt = parts.joined(separator: "\n")
@@ -796,7 +796,7 @@ func isShell(_ t: Tool) -> Bool { t.name == "shell" }
 func cmd(_ t: Tool) -> String {
     if isShell(t) {
         if let c = t.args["command"], !c.isNull {
-            if let s = c.asString { return s }
+            if let s = c.stringValue { return s }
             return c.pyStr
         }
         return ""
@@ -866,7 +866,7 @@ func basename(_ p: String) -> String {
 
 func argStr(_ args: JSONValue, _ key: String) -> String? {
     guard let v = args[key], !v.isNull else { return nil }
-    if let s = v.asString { return s }
+    if let s = v.stringValue { return s }
     return v.pyStr
 }
 
@@ -923,7 +923,7 @@ func toolList(_ turn: Turn) -> String {
 // Python str(x) for a value used as a summary; None/missing -> "".
 func stringifyMaybe(_ v: JSONValue?) -> String {
     guard let v = v, !v.isNull else { return "" }
-    if let s = v.asString { return s }
+    if let s = v.stringValue { return s }
     return v.pyStr
 }
 
