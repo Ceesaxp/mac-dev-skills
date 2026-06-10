@@ -18,7 +18,9 @@ Building `mac-dev-skills` — a Claude Code plugin suite for modern (macOS 26/27
   - Adversarial review caught + fixed real bugs: 1 wrong `minMacOS`, 1 hallucinated delegate method, 1 hallucinated prose symbol, 4 stub code bodies. Corpus-wide sweep confirms zero remaining stubs.
   - `build-tools.sh` builds/signs/installs both `appkit-api` and `appkit-search`.
 
-**Next:** merge `feat/appkit-search` to main, then Phase 2 (`appkit-design` flagship skill wired to both tools). Remaining phases below.
+**Next:** Phase 2 (`appkit-design` flagship skill wired to both tools).
+
+➡️ **For Phases 2–5, read `docs/superpowers/plans/2026-06-09-phases-2-5-handoff.md`** — it has the per-phase plan, the verified skill-status table, and the process rules (writing-skills Iron Law, symbol-grounding with `appkit-api`, adversarial review, Workflow-tool gotchas).
 
 ---
 
