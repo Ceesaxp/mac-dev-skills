@@ -33,13 +33,19 @@ Building `mac-dev-skills` — a Claude Code plugin suite for modern (macOS 26/27
   - `appkit-session-report` (NEW, `disable-model-invocation`): wraps `analyze-session.py` — always `--output`, unprompted privacy warning, summary-over-raw, bug-filing guard. Analyzer **verified running end-to-end**; fixed its build-detection (`BuildAndRun`→`build-and-run.sh` + `swift build`). `session-report*.md` is gitignored (unredacted transcripts).
   - writing-skills loop both: RED → GREEN → GREEN-verify (4/4 disciplines, 0 evasions; the session-share over-interpretation loophole closed + re-verified). Verified packaging tooling against `xcodebuild`/`notarytool`/`altool` `--help`.
 
-**Next:** Phase 5 (suite-wide polish — see §"Phase 5" in `docs/superpowers/plans/2026-06-09-phases-2-5-handoff.md`).
+- **Phase 5** ✅ shipped (merged to main) — suite-wide polish.
+  - **Corpus compile-audit** (the headline): `swiftc -typecheck` swept all 69 `appkit-search` patterns and found **13 latent won't-compile bugs** the integrity tests never caught (diffable cellProvider arity ×4, a hallucinated `NSTextField(wrappingString:)` ×2, read-only `textLayoutManager` ×2, static `preferringHierarchical` ×2, + 3 singletons). All fixed and re-verified; 44 tests pass.
+  - **All 8 verbatim-draft skills audited** (typecheck every Swift snippet + symbol-verify) and fixed: a fresh-machine `grep -c || echo 0` double-emit, stale Xcode-26 toolchain refs → 27, the `builkd-and-run.sh` typo inside the script + scattered `BuildAndRun.sh` → `build-and-run.sh`, soft-deprecated `activate(ignoringOtherApps:)`, a fragile `@MainActor` entry point → `MainActor.assumeIsolated`, a nonexistent `NSStaticText` → `NSTextField`, `.rows` → `.outlineRows`, dangling `references/quality-rules.md`, and several won't-compile snippets.
+  - `appkit-liquid-glass-concentricity` `effectIsInteractive` un-hedge (the original `appkit-api` motivator) + the example now typechecks.
+  - `appkit-setup` now **builds the native tools** (was a gap) + optional flexscope/PrivateHeaderKit setup.
+  - README + CHANGELOG → the real suite (13 skills + 2 tools).
+  - **Accepted limitation:** `analyze-session.py` build-detection is a text heuristic (a `xcodebuild --help` probe can inflate counts); the `appkit-session-report` SKILL.md bug-filing guard mitigates the user-facing risk. `CONTRIBUTING.md` not added (optional).
 
-**⚠️ Phase 5 carries (accumulated):**
-- **`appkit-dev-workflow` naming drift:** its SKILL.md prose says `BuildAndRun.sh` (lines ~3/66/70) but the actual script is `build-and-run.sh` — agents typing `BuildAndRun.sh` hit "command not found." Fix the prose in the polish pass.
-- **`analyze-session.py` heuristics:** `RE_BUILD` matches `xcodebuild`/`tuist` even inside `--help`/`-version` probes (inflates build counts), and Turn Detail renders subagent turns as bare `Turn N` colliding with parent turns (no origin label). Real but minor; the session-report SKILL.md guard mitigates the user-facing risk.
-- **`appkit-setup`:** build flexscope **if present** at its path + check for PrivateHeaderKit (the `appkit-app-inspector` skill explains how to obtain/build flexscope meanwhile).
-- **`appkit-search` corpus compile-audit:** the integrity tests don't compile `swiftCode`; do a suite-wide pass (generalize `scripts/wf-appkit-design-audit.js`).
+---
+
+## ✅ Project complete — all 6 phases (0, 1a, 1b, 2, 3, 4, 5) merged to `main`
+
+The `mac-dev-skills` suite: **13 skills** + the `appkit-dev` agent + **2 native Swift tools** (`appkit-api`, `appkit-search`). Verified state: `appkit-api` 10 tests, `appkit-search` 44 tests, all 69 corpus snippets typecheck against the macOS 27 SDK, every shipped skill's Swift snippets typecheck, packaging tooling verified against the Xcode 27 toolchain. Authored throughout under the writing-skills RED→GREEN→adversarial-audit→GREEN-verify loop. **Honest state:** skills are verified by graded scenarios + compile/symbol checks, not by running every produced app or the (spec-complete, unbuilt) flexscope; the packaging ship-scripts are toolchain-flag-verified but not run against a live signing identity/ASC account.
 
 **⚠️ Carry into Phase 5:** the corpus integrity tests do **not** compile the `swiftCode`. The audit only spot-checked the 2 corner patterns it touched — a **suite-wide compile/symbol audit of all 69 patterns' `swiftCode`** is warranted (generalize `scripts/wf-appkit-design-audit.js`). Also note: `appkit-api check` resolves protocol-declared members under their **protocol owner** (e.g. `setAccessibilityIdentifier` under `NSAccessibilityProtocol`, not `NSView`) — a not-found on `Type.member` is not automatically a hallucination.
 
