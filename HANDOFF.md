@@ -1,12 +1,28 @@
-# Codex Handoff — `mac-dev-skills` Phase 1b (`appkit-search`)
+# Handoff — `mac-dev-skills` (status through Phase 1b)
 
 - **Date:** 2026-06-09
-- **Branch:** `feat/appkit-search`
+- **Branch:** `feat/appkit-search` (ready to merge to `main`)
 - **Repo:** `/Users/orion/Developer/Templates/skills/mac-dev-skills`
 
 ## What this project is
 
-Building `mac-dev-skills` — a Claude Code plugin suite for modern (macOS 26/27) AppKit development that rivals Microsoft's `win-dev-skills`. **Phase 0 + 1a shipped** (plugin scaffold + `appkit-api` SDK API/availability validator). **Phase 1b** (`appkit-search` Swift CLI — BM25 over a curated AppKit pattern corpus) is ~90% done; the engine track is **complete** and only the **corpus** remains.
+Building `mac-dev-skills` — a Claude Code plugin suite for modern (macOS 26/27) AppKit development that rivals Microsoft's `win-dev-skills`.
+
+## Status
+
+- **Phase 0** ✅ shipped (merged to main) — plugin scaffold: marketplace + plugin manifests, 9 relocated AppKit skills, `appkit-dev` agent.
+- **Phase 1a** ✅ shipped (merged to main) — `appkit-api`: SDK API/availability validator (symbol-graph backed, Swift Testing).
+- **Phase 1b** ✅ COMPLETE (on `feat/appkit-search`, ready to merge) — `appkit-search`: BM25 search over a **curated 69-pattern corpus** of canonical AppKit patterns.
+  - Engine: faithful winui-search BM25 port (k1=1.2/b=0.75, weighted-field tf, 3-stage synonym pipeline), 4 CLI verbs (search/get/list/debug), **44 Swift Testing tests pass**.
+  - Corpus: all 69 patterns authored, **HIG-grounded** (whenToUse + higReference per pattern), and **every keySymbol verified against the macOS 27 SDK** (115 types + 270 members = 385 symbols all resolve via `appkit-api`).
+  - Adversarial review caught + fixed real bugs: 1 wrong `minMacOS`, 1 hallucinated delegate method, 1 hallucinated prose symbol, 4 stub code bodies. Corpus-wide sweep confirms zero remaining stubs.
+  - `build-tools.sh` builds/signs/installs both `appkit-api` and `appkit-search`.
+
+**Next:** merge `feat/appkit-search` to main, then Phase 2 (`appkit-design` flagship skill wired to both tools). Remaining phases below.
+
+---
+
+## ⬇️ The section below documents Phase 1b's build for reference; it is now DONE.
 
 ## Design docs (read first)
 
