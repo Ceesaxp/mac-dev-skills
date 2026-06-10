@@ -381,7 +381,7 @@ func rstripSlash(_ s: String) -> String {
 // Tool-name normalization
 // --------------------------------------------------------------------------- //
 
-let TOOL_NAME_MAP: [String: String] = [
+let toolNameMap: [String: String] = [
     "Read": "view", "Edit": "edit", "Write": "create", "Glob": "glob",
     "Grep": "grep", "Bash": "shell", "Skill": "skill", "Agent": "agent",
     "Task": "agent", "WebFetch": "web_fetch", "WebSearch": "web_search",
@@ -389,32 +389,20 @@ let TOOL_NAME_MAP: [String: String] = [
 ]
 
 func normTool(_ name: String) -> String {
-    return TOOL_NAME_MAP[name] ?? name.lowercased()
+    return toolNameMap[name] ?? name.lowercased()
 }
 
 // --------------------------------------------------------------------------- //
 // Error extraction
 // --------------------------------------------------------------------------- //
 
-let ERR_TRIGGER = try! NSRegularExpression(
-    pattern: "error:|BUILD FAILED|fatal error|Command .* failed|"
-        + "linker command failed|code object is not signed|"
-        + "Undefined symbol|cannot find",
-    options: [.caseInsensitive])
+// The case-insensitive error-trigger pattern (`Patterns.errorTrigger`) and the
+// categorization regexes are namespaced together in `enum Patterns`, defined
+// below near the categorization logic.
 
-func regexSearch(_ re: NSRegularExpression, _ s: String) -> Bool {
-    let range = NSRange(s.startIndex..., in: s)
-    return re.firstMatch(in: s, range: range) != nil
-}
-
-// Returns the first matched substring's group, mirroring Python re.search(...).group(n).
-func regexFirstGroup(_ pattern: String, _ s: String, group: Int) -> String? {
-    guard let re = try? NSRegularExpression(pattern: pattern) else { return nil }
-    let range = NSRange(s.startIndex..., in: s)
-    guard let m = re.firstMatch(in: s, range: range) else { return nil }
-    let gr = m.range(at: group)
-    guard gr.location != NSNotFound, let r = Range(gr, in: s) else { return nil }
-    return String(s[r])
+// "Does this regex match anywhere in s?" — unanchored, mirroring re.search().
+func regexSearch(_ re: some RegexComponent, _ s: String) -> Bool {
+    return s.contains(re)
 }
 
 // Python: s[:n] over Unicode code points; truncate at n characters.
@@ -425,18 +413,19 @@ func prefixChars(_ s: String, _ n: Int) -> String {
 
 func errorSummary(_ text: String?) -> (Bool, [String]) {
     guard let text = text, !text.isEmpty else { return (false, []) }
-    if !regexSearch(ERR_TRIGGER, text) { return (false, []) }
+    if !regexSearch(Patterns.errorTrigger, text) { return (false, []) }
     var out: [String] = []
     // Python str.splitlines() splits on a broader set of boundaries.
     for line in splitLines(text) {
         let s = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !regexSearch(ERR_TRIGGER, s) { continue }
-        if let g = regexFirstGroup("error:\\s*(.+)", s, group: 1) {
+        if !regexSearch(Patterns.errorTrigger, s) { continue }
+        if let m = s.firstMatch(of: #/error:\s*(.+)/#) {
+            let g = String(m.1)   // capture group 1, mirrors re.search(...).group(1)
             out.append(prefixChars(g.trimmingCharacters(in: .whitespacesAndNewlines), 140))
         } else if s.contains("BUILD FAILED") {
             out.append("** BUILD FAILED **")
-        } else if let g0 = regexFirstGroup("Command (\\S+) failed", s, group: 0) {
-            out.append(g0)
+        } else if let m0 = s.firstMatch(of: #/Command (\S+) failed/#) {
+            out.append(String(m0.0))   // whole match, mirrors re.search(...).group(0)
         } else if s.contains("linker command failed") {
             out.append("linker command failed")
         } else {
@@ -507,10 +496,8 @@ func extractPrompt(_ events: [Event]) -> String {
         }
         guard let c = cand, !c.isEmpty else { continue }
         let s = c.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let re = try? NSRegularExpression(pattern: "^<(local-)?command-(name|message|args|stdout)>") {
-            let range = NSRange(s.startIndex..., in: s)
-            if re.firstMatch(in: s, range: range) != nil { continue }
-        }
+        // Anchored at ^, so a "match anywhere" via .contains is still start-anchored.
+        if s.contains(#/^<(local-)?command-(name|message|args|stdout)>/#) { continue }
         if s.hasPrefix("<local-command-caveat>") { continue }
         return c
     }
@@ -804,25 +791,32 @@ func cmd(_ t: Tool) -> String {
     return ""
 }
 
-let RE_HELPER = try! NSRegularExpression(pattern: "build-and-run\\.sh|build-and-run\\b|BuildAndRun")
-let RE_BUILD = try! NSRegularExpression(pattern: "\\bxcodebuild\\b|build-and-run|BuildAndRun|\\btuist\\b|\\bswift build\\b")
-let RE_RUN = try! NSRegularExpression(pattern: "\\bopen\\s+.*\\.app|(?:build-and-run|BuildAndRun)(?!.*--skip-run)|Contents/MacOS/")
-let RE_DIAG = try! NSRegularExpression(pattern: "xcresulttool|-showBuildSettings|DiagnosticReports|"
-    + "log stream|grep .*error|DerivedData|rm -rf .*build|codesign --verify|spctl")
-let RE_SCAFFOLD = try! NSRegularExpression(pattern: "tuist generate|tuist install|mkdir ")
-let RE_GIT = try! NSRegularExpression(pattern: "\\bgit\\b")
-let RE_XCODEBUILD = try! NSRegularExpression(pattern: "\\bxcodebuild\\b")
-let RE_CLEAN = try! NSRegularExpression(pattern: "rm -rf .*build|DerivedData")
+// Native Swift Regex literals. Extended `#/.../#` form throughout: it needs no
+// escaping for the `/` in `Contents/MacOS/`, and (unlike bare `/.../`) it parses
+// under the plain `swift` interpreter without -enable-bare-slash-regex. All
+// case-sensitive, matching the original NSRegularExpression default — except
+// `errorTrigger`, which is case-insensitive via the inline `(?i)`.
+enum Patterns {
+    static let helper = #/build-and-run\.sh|build-and-run\b|BuildAndRun/#
+    static let build = #/\bxcodebuild\b|build-and-run|BuildAndRun|\btuist\b|\bswift build\b/#
+    static let run = #/\bopen\s+.*\.app|(?:build-and-run|BuildAndRun)(?!.*--skip-run)|Contents\/MacOS\//#
+    static let diagnostic = #/xcresulttool|-showBuildSettings|DiagnosticReports|log stream|grep .*error|DerivedData|rm -rf .*build|codesign --verify|spctl/#
+    static let scaffold = #/tuist generate|tuist install|mkdir /#
+    static let git = #/\bgit\b/#
+    static let xcodebuild = #/\bxcodebuild\b/#
+    static let clean = #/rm -rf .*build|DerivedData/#
+    static let errorTrigger = #/(?i)error:|BUILD FAILED|fatal error|Command .* failed|linker command failed|code object is not signed|Undefined symbol|cannot find/#
+}
 
 func categorize(_ turn: Turn) -> String {
     let names = turn.tools.map { $0.name }
     let hasSkill = !turn.skills.isEmpty
-    let hasBuild = turn.tools.contains { isShell($0) && regexSearch(RE_BUILD, cmd($0)) }
-    let hasBuildErr = turn.tools.contains { $0.error && isShell($0) && regexSearch(RE_BUILD, cmd($0)) }
-    let hasRun = turn.tools.contains { isShell($0) && regexSearch(RE_RUN, cmd($0)) }
-    let hasGit = turn.tools.contains { isShell($0) && regexSearch(RE_GIT, cmd($0)) }
-    let isDiag = turn.tools.contains { isShell($0) && regexSearch(RE_DIAG, cmd($0)) }
-    let hasScaffold = turn.tools.contains { regexSearch(RE_SCAFFOLD, cmd($0)) }
+    let hasBuild = turn.tools.contains { isShell($0) && regexSearch(Patterns.build, cmd($0)) }
+    let hasBuildErr = turn.tools.contains { $0.error && isShell($0) && regexSearch(Patterns.build, cmd($0)) }
+    let hasRun = turn.tools.contains { isShell($0) && regexSearch(Patterns.run, cmd($0)) }
+    let hasGit = turn.tools.contains { isShell($0) && regexSearch(Patterns.git, cmd($0)) }
+    let isDiag = turn.tools.contains { isShell($0) && regexSearch(Patterns.diagnostic, cmd($0)) }
+    let hasScaffold = turn.tools.contains { regexSearch(Patterns.scaffold, cmd($0)) }
     let hasCreate = names.contains("create")
     let hasEdit = names.contains("edit")
     let hasView = names.contains("view")
@@ -847,7 +841,7 @@ func categorize(_ turn: Turn) -> String {
 // Rendering
 // --------------------------------------------------------------------------- //
 
-let CATEGORY_LABELS: [String: String] = [
+let categoryLabels: [String: String] = [
     "skill-load": "Skill loading", "explore": "Reading/exploring",
     "scaffold": "Scaffolding", "code-create": "Creating files",
     "code-edit": "Editing code", "build-ok": "Build (success)",
@@ -960,9 +954,9 @@ func render(_ parsed: Parsed, includeSubagents: Bool) -> String {
     let buildFix = allTurns.filter { $0.category == "build-fix" }.count
     let attempts = buildOk + buildFix
 
-    let usedBar = allTurns.contains { tn in tn.tools.contains { isShell($0) && regexSearch(RE_HELPER, cmd($0)) } }
+    let usedBar = allTurns.contains { tn in tn.tools.contains { isShell($0) && regexSearch(Patterns.helper, cmd($0)) } }
     let rawXcb = allTurns.contains { tn in tn.tools.contains {
-        isShell($0) && regexSearch(RE_XCODEBUILD, cmd($0)) && !regexSearch(RE_HELPER, cmd($0))
+        isShell($0) && regexSearch(Patterns.xcodebuild, cmd($0)) && !regexSearch(Patterns.helper, cmd($0))
     } }
     let buildStatus: String
     if usedBar && !rawXcb {
@@ -979,7 +973,7 @@ func render(_ parsed: Parsed, includeSubagents: Bool) -> String {
     var buildErrors: [(Int, [String])] = []
     for t in allTurns {
         for tool in t.tools {
-            if tool.error && isShell(tool) && regexSearch(RE_BUILD, cmd(tool)) && !tool.errs.isEmpty {
+            if tool.error && isShell(tool) && regexSearch(Patterns.build, cmd(tool)) && !tool.errs.isEmpty {
                 buildErrors.append((t.n, tool.errs))
             }
         }
@@ -1059,7 +1053,7 @@ func render(_ parsed: Parsed, includeSubagents: Bool) -> String {
     var cleans = 0
     for t in allTurns {
         for tool in t.tools {
-            if regexSearch(RE_CLEAN, cmd(tool)) { cleans += 1 }
+            if regexSearch(Patterns.clean, cmd(tool)) { cleans += 1 }
         }
     }
     if cleans >= 2 {
@@ -1100,7 +1094,7 @@ func render(_ parsed: Parsed, includeSubagents: Bool) -> String {
     md.append("| Category | Turns | Output Tokens |")
     md.append("|----------|------:|--------------:|")
     for (cat, e) in catRows {
-        let label = CATEGORY_LABELS[cat] ?? cat
+        let label = categoryLabels[cat] ?? cat
         md.append("| \(label) | \(e.turns) | \(grouped(e.tokens)) |")
     }
     md.append("")
@@ -1192,7 +1186,7 @@ func stableSortByTurnsDesc(order: [String], counts: [String: (turns: Int, tokens
 // Privacy notice
 // --------------------------------------------------------------------------- //
 
-let PRIVACY = """
+let privacyNotice = """
 ## Privacy and sensitivity — read before sharing this file
 
 **This report was generated from your live agent session and was NOT redacted.** Depending on what your session involved, it can include:
@@ -1214,7 +1208,7 @@ func insertPrivacy(_ report: String) -> String {
     }
     var result: [String] = []
     result.append(contentsOf: lines[0..<idx])
-    result.append(PRIVACY)
+    result.append(privacyNotice)
     result.append("")
     result.append(contentsOf: lines[idx...])
     return result.joined(separator: "\n")
