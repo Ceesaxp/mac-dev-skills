@@ -1,6 +1,6 @@
 // Tuist manifest for a programmatic AppKit app on macOS 26 Tahoe.
 //
-// Usage:  tuist generate --no-open   ->  MyApp.xcworkspace  ->  ../BuildAndRun.sh
+// Usage:  tuist generate --no-open   ->  MyApp.xcworkspace  ->  ./build-and-run.sh
 // Docs:   https://docs.tuist.dev
 //
 // Rename "MyApp" throughout, drop your Swift files under Sources/, and (optionally)

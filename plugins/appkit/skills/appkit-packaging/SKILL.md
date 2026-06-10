@@ -27,7 +27,7 @@ The suite never blocks you from shipping these — it tells you the trade-off so
 
 | Task | Command |
 |---|---|
-| Build for release | `./BuildAndRun.sh --configuration Release --skip-run` (or `xcodebuild -configuration Release archive`) |
+| Build for release | `./build-and-run.sh --configuration Release --skip-run` (or `xcodebuild -configuration Release archive`) |
 | List signing identities | `security find-identity -v -p codesigning` |
 | Strip quarantine before signing | `xattr -cr MyApp.app` |
 | Sign (hardened runtime + timestamp) | `codesign --force --options runtime --timestamp --sign "Developer ID Application: NAME (TEAMID)" MyApp.app` |
@@ -45,7 +45,7 @@ The suite never blocks you from shipping these — it tells you the trade-off so
 
 #### Step 1 — Build for release
 ```bash
-./BuildAndRun.sh --configuration Release --skip-run
+./build-and-run.sh --configuration Release --skip-run
 ```
 Or archive for a clean exported product:
 ```bash

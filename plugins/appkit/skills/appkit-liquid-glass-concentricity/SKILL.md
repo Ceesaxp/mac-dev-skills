@@ -28,7 +28,7 @@ If you adopted Liquid Glass in macOS 26, running on macOS 27 you get these **aut
 **Opt-in:** the **interactive glass effect** (new in macOS 27) — glass that subtly *bounces when clicked*, giving the sense the control is responding to interaction. Maps uses it for a few custom controls.
 
 - Use it **only** with controls and buttons, or glass containers of interactive controls. Not for every use of glass. **A little goes a long way.**
-- ⚠️ The session demonstrates this effect but does **not** show its exact API symbol. Confirm the spelling against Apple's current "Adopting Liquid Glass" / "What's new in AppKit" docs for the macOS 27 cycle — **do not assume** a property name (e.g. it is *not* confirmed to be `NSGlassEffectView.isInteractive`).
+- The interactive-glass property is **`NSGlassEffectView.effectIsInteractive`** (`Bool`, get/set; macOS **27.0**) — SDK-verified with `appkit-api`. Gate it: `if #available(macOS 27, *) { glass.effectIsInteractive = true }`.
 
 ## Concentricity (`NSViewCornerConfiguration`)
 
@@ -43,6 +43,8 @@ Steps:
 
 ```swift
 class LocalWeatherView: NSView {
+    let minimumCornerRadius: CGFloat = 8
+
     override var cornerConfiguration: NSViewCornerConfiguration? {
         let radius: NSViewCornerRadius = .containerConcentric(minimumCornerRadius)
         return .uniformCorners(radius: radius)
@@ -54,7 +56,7 @@ class LocalWeatherView: NSView {
 
 - **Hardcoding `layer.cornerRadius` near a container corner.** That's exactly where `cornerConfiguration` + `.containerConcentric` belongs — audit those sites first.
 - **Applying interactive glass everywhere.** Restrict it to interactive controls/buttons or their glass containers.
-- **Guessing the interactive-glass API name.** The session names `NSScrollEdgeEffectStyle` and the `NSViewCornerConfiguration`/`NSViewCornerRadius` types, but **not** the interactive-glass symbol — verify it in the docs rather than inventing one.
+- **Guessing a macOS 27 symbol.** The interactive-glass property is `NSGlassEffectView.effectIsInteractive` (27.0) — verify any new symbol with `appkit-api check` rather than inventing one. (This property is the exact "TBD" that motivated building `appkit-api`.)
 
 ## Recap
 

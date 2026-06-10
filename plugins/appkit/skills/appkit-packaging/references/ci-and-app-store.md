@@ -72,7 +72,7 @@ jobs:
             --issuer "$ISSUER_ID"
 
       - name: Build (Release)
-        run: ./plugins/appkit/skills/appkit-dev-workflow/BuildAndRun.sh --configuration Release --skip-run
+        run: ./plugins/appkit/skills/appkit-dev-workflow/build-and-run.sh --configuration Release --skip-run
 
       - name: Sign, notarize, staple, build DMG
         run: |

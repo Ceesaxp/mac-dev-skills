@@ -1,6 +1,6 @@
 ---
 name: appkit-code-review
-description: "Code-quality review for native macOS AppKit apps — MVC/MVVM, Swift 6 concurrency and main-actor correctness, memory management (retain cycles), target-action vs bindings, accessibility, theming, security, and performance. Use before committing to catch issues the compiler and UI tests won't find."
+description: "Use when reviewing native macOS AppKit Swift code before committing — checks MVC/MVVM, Swift 6 concurrency and main-actor correctness, memory management (retain cycles), target-action vs bindings, accessibility, theming, security, and performance, catching issues the compiler and UI tests won't find."
 ---
 
 ### When to Use
@@ -12,11 +12,11 @@ Run a code review **after the app builds and before committing**. This catches q
 Read through the project's Swift files and check each section below. Lean on three layers of tooling first, then human judgment:
 
 1. **Compiler warnings.** Build with warnings visible (`xcodebuild ... | xcpretty`, or read the raw log). In Swift 6 language mode, **data-race and main-actor isolation violations are diagnostics** — treat them as must-fix, not noise. Enable `-warnings-as-errors` in CI once clean.
-2. **swift-format.** This skill ships a `config/.swift-format` (a JSON config you commit, not a compiled binary — no unsigned artifact to ship/verify). `swift-format` is Apple's official formatter/linter; it ships inside the Xcode toolchain (also runnable as `swift format …`) and via `brew install swift-format`. Lint without rewriting files:
+2. **swift-format.** Lint against the project's own `.swift-format` (a JSON config you commit at the repo root, not a compiled binary — no unsigned artifact to ship/verify). `swift-format` is Apple's official formatter/linter; it ships inside the Xcode toolchain (also runnable as `swift format …`) and via `brew install swift-format`. Lint without rewriting files:
    ```bash
-   swift-format lint --strict --recursive --configuration config/.swift-format Sources/
+   swift-format lint --strict --recursive --configuration .swift-format Sources/
    ```
-   (`--strict` makes any finding a non-zero exit for CI; drop it for advisory-only. To auto-apply formatting: `swift-format format --in-place --recursive Sources/`.) The shipped config enables the lint rules that matter most for AppKit correctness — `NeverForceUnwrap`, `NeverUseForceTry`, `NeverUseImplicitlyUnwrappedOptionals` — plus consistent formatting (import ordering, lowerCamelCase, early-exits, no semicolons). See `references/quality-rules.md` for the rationale. `NeverUseImplicitlyUnwrappedOptionals` is the one most likely to be noisy for programmatic AppKit's "set-in-`viewDidLoad`" properties — turn it off in the config if that pattern is intentional in your codebase.
+   (`--strict` makes any finding a non-zero exit for CI; drop it for advisory-only. To auto-apply formatting: `swift-format format --in-place --recursive Sources/`.) The config should enable the lint rules that matter most for AppKit correctness — `NeverForceUnwrap`, `NeverUseForceTry`, `NeverUseImplicitlyUnwrappedOptionals` — plus consistent formatting (import ordering, lowerCamelCase, early-exits, no semicolons). `NeverUseImplicitlyUnwrappedOptionals` is the one most likely to be noisy for programmatic AppKit's "set-in-`viewDidLoad`" properties — turn it off in the config if that pattern is intentional in your codebase.
 
    **swift-format has no custom-rule mechanism** (unlike the WinUI Roslyn analyzer or SwiftLint's `custom_rules`), so the AppKit-*semantic* pitfalls below aren't enforced by it — cover them with the manual checklist plus these quick `grep` passes:
    ```bash
@@ -100,8 +100,3 @@ After reviewing, summarize:
 1. **Issues found:** each with file, line, and what's wrong
 2. **Severity:** Error (must fix), Warning (should fix), Note (could improve)
 3. **Suggested fixes:** a concrete Swift change for each
-
-### References
-
-- `references/quality-rules.md` — detailed rules with code examples (concurrency, memory, security, accessibility, performance, localization)
-- `config/.swift-format` — the swift-format configuration to lint/format the project against

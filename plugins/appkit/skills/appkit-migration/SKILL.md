@@ -1,6 +1,6 @@
 ---
 name: appkit-migration
-description: "Migrate apps to native macOS AppKit + Swift — Mac Catalyst / UIKit → AppKit (UIView→NSView, UIViewController→NSViewController, UITableView→NSTableView, UICollectionView→NSCollectionView, UINavigationController→NSSplitViewController/NSToolbar, UIColor→NSColor), Electron/web → AppKit, and Objective-C → Swift. Use when converting a Catalyst, UIKit, Electron, or Objective-C app to native AppKit, mapping UIKit types, or fixing migration build errors."
+description: "Migration to native macOS AppKit + Swift — Mac Catalyst / UIKit → AppKit (UIView→NSView, UIViewController→NSViewController, UITableView→NSTableView, UICollectionView→NSCollectionView, UINavigationController→NSSplitViewController/NSToolbar, UIColor→NSColor), Electron/web → AppKit, and Objective-C → Swift. Use when converting a Catalyst, UIKit, Electron, or Objective-C app to native AppKit, mapping UIKit types, or fixing migration build errors."
 ---
 
 ### Pick the migration
@@ -153,6 +153,6 @@ Same framework, new language — migrate **incrementally** behind the bridging h
 grep -rEn '\bimport UIKit\b|\bUI(View|ViewController|Color|Button|Label|TableView)\b' --include='*.swift' . | grep -v '/build/'
 
 # Build and run
-./BuildAndRun.sh
+./build-and-run.sh
 ```
 Then run `appkit-ui-testing` to confirm behavior and `appkit-code-review` for quality (concurrency, memory, accessibility, theming). Visual-check the window against the `appkit-ui-testing` Step 3.5 checklist — migrated layouts often need resizing per `appkit-design` Step 4.

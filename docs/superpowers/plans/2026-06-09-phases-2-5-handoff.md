@@ -129,7 +129,9 @@ Concentrate the TestFlight + Mac App Store story here (spec §9):
 
 ---
 
-## Phase 5 — suite-wide polish
+## Phase 5 — suite-wide polish ✅ SHIPPED
+
+> **Done (merged to `main`).** Headline: a `swiftc -typecheck` **corpus compile-audit** caught 13 latent won't-compile bugs across the 69 `appkit-search` patterns (the integrity tests never compiled `swiftCode`) — all fixed, 44 tests still pass. All 8 verbatim-draft skills audited (typecheck + symbol-verify) and fixed; `effectIsInteractive` un-hedged; `appkit-setup` now builds the native tools + handles flexscope/PHK; README/CHANGELOG updated. Accepted limitation: the `analyze-session.py` build heuristic (guarded in the session-report skill). **Project complete — all phases merged.** The plan below is retained for reference.
 
 - **Polish the 9 verbatim-draft skills** under the writing-skills loop. Each was relocated unedited; run an application-scenario subagent per skill, fix gaps. Priority targets:
   - `appkit-liquid-glass-concentricity`: it has an explicit **"interactive-glass API name TBD — verify against docs"** hedge. `appkit-api` now resolves it: `NSGlassEffectView.effectIsInteractive` (macOS 27.0). Replace the hedge with the verified symbol. (This was the original motivating example for building `appkit-api`.)

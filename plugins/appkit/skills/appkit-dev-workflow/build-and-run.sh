@@ -1,8 +1,8 @@
-#!/bin/sh
+#!/usr/bin/env bash
 #
-# builkd-and-run.sh — build and (optionally) run a native macOS AppKit app.
+# build-and-run.sh — build and (optionally) run a native macOS AppKit app.
 #
-# One command to generate + build + launch:  ./builkd-and-run.sh
+# One command to generate + build + launch:  ./build-and-run.sh
 #
 # - Verifies Xcode is selected and its license is accepted
 # - Runs `tuist generate` if a Project.swift exists and the generated project is missing/stale
@@ -13,11 +13,11 @@
 # - Launches it with `open` (returns immediately, app runs detached)
 #
 # Examples:
-#   ./builkd-and-run.sh                          # generate (if needed), build, launch with `open`
-#   ./builkd-and-run.sh --scheme MyApp           # explicit scheme
-#   ./builkd-and-run.sh --logs                   # run the inner binary streaming stdout/stderr (use in background)
-#   ./builkd-and-run.sh --skip-run               # build only
-#   ./builkd-and-run.sh --configuration Release  # override Debug
+#   ./build-and-run.sh                          # generate (if needed), build, launch with `open`
+#   ./build-and-run.sh --scheme MyApp           # explicit scheme
+#   ./build-and-run.sh --logs                   # run the inner binary streaming stdout/stderr (use in background)
+#   ./build-and-run.sh --skip-run               # build only
+#   ./build-and-run.sh --configuration Release  # override Debug
 #
 set -euo pipefail
 
