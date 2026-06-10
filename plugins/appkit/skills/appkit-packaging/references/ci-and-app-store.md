@@ -124,26 +124,37 @@ xcodebuild -scheme MyApp -configuration Release \
   -archivePath ./build/MyApp.xcarchive archive
 
 # Export an App Store package using an ExportOptions.plist
-#   (method = app-store; teamID = TEAMID; signingStyle = automatic|manual)
+#   (method = app-store-connect; teamID = TEAMID; signingStyle = automatic|manual)
 xcodebuild -exportArchive \
   -archivePath ./build/MyApp.xcarchive \
   -exportOptionsPlist ExportOptions.plist \
   -exportPath ./build/export
 
-# Upload — Transporter app, or notarytool's sibling for the store:
+# Upload to App Store Connect — altool --upload-app, Transporter, or the ASC API.
+# (notarytool is the NOTARY tool for Developer ID — it does NOT upload to the store.)
+xcrun altool --validate-app -f ./build/export/MyApp.pkg \
+  -t macos --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
 xcrun altool --upload-app -f ./build/export/MyApp.pkg \
   -t macos --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
 ```
-`ExportOptions.plist` (minimal, App Store):
+`ExportOptions.plist` (minimal, App Store). **Use `app-store-connect`** — `app-store` is deprecated (Xcode 27 still accepts it as an alias):
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>method</key><string>app-store</string>
+  <key>method</key><string>app-store-connect</string>
   <key>teamID</key><string>TEAMID</string>
   <key>signingStyle</key><string>automatic</string>
+  <!-- manual signing? add: -->
+  <!-- <key>signingCertificate</key><string>Apple Distribution</string> -->
+  <!-- <key>installerSigningCertificate</key><string>Mac Installer Distribution</string> -->
+  <!-- <key>provisioningProfiles</key><dict><key>com.you.MyApp</key><string>Profile Name</string></dict> -->
+  <!-- upload directly from xcodebuild instead of a separate altool step: -->
+  <!-- <key>destination</key><string>upload</string> -->
 </dict></plist>
 ```
+
+> **`altool` API-key CI trap:** unlike `notarytool` (`--key <path>`), `altool` takes **no key path** — with `--apiKey`/`--apiIssuer` it searches `./private_keys`, `~/private_keys`, `~/.private_keys`, `~/.appstoreconnect/private_keys`, and `$API_PRIVATE_KEYS_DIR` for a file named exactly `AuthKey_<KEYID>.p8`. In CI, base64-decode your `.p8` into one of those dirs under that name first (or pass `--p8-file-path <path>`). For a **Team** key pass `--apiIssuer`; for an **Individual** key **omit** it (passing it returns 401).
 
 ### Then, in App Store Connect (browser)
 1. Create the app record (bundle ID, name, primary language, SKU).
@@ -152,7 +163,7 @@ xcrun altool --upload-app -f ./build/export/MyApp.pkg \
 4. Set the **age rating** questionnaire.
 5. Select the uploaded build, set pricing/availability, and **Submit for Review**.
 
-There is **no fully first-party CLI to push a build through review** — uploading is scriptable (Transporter / `altool` / `notarytool` siblings), but creating the record, metadata, screenshots, and the actual submit are browser steps in App Store Connect. This mirrors the WinUI "Microsoft Store submission is browser-based" note.
+There is **no fully first-party CLI to push a build through review** — uploading is scriptable (`altool --upload-app` / Transporter / the App Store Connect API), but creating the record, metadata, screenshots, and the actual submit are browser steps in App Store Connect. This mirrors the WinUI "Microsoft Store submission is browser-based" note.
 
 ### Gotchas
 - **Rejected for missing sandbox / over-broad entitlements** — the most common automated-validation failure. Trim entitlements to the minimum.
@@ -174,7 +185,7 @@ Same: Apple Distribution signing, App Sandbox required, the bundle ID/version se
 
 ### Step 1 — Build and upload (shared with App Store)
 
-Archive and export an `app-store` package exactly as in the Mac App Store section above (`xcodebuild archive` → `-exportArchive` with `method = app-store`), then upload to App Store Connect. Any of:
+Archive and export an App Store package exactly as in the Mac App Store section above (`xcodebuild archive` → `-exportArchive` with `method = app-store-connect`), then upload to App Store Connect. Any of:
 - **Xcode Organizer** → Distribute App → App Store Connect (validates, signs, uploads).
 - **Transporter** app (drag the `.pkg`).
 - **CLI:** `xcrun altool --upload-app -f ./build/export/MyApp.pkg -t macos --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"` (App Store Connect API key — ideal for CI).
@@ -200,7 +211,7 @@ Create tester **groups** (e.g. "QA", "Power Users") and assign specific builds p
 
 ### CI automation
 
-The same GitHub Actions shape as the Developer ID job applies, swapping the sign/notarize step for archive → export (`method: app-store`) → upload. Authenticate uploads with an **App Store Connect API key** (`--apiKey`/`--apiIssuer`, or the App Store Connect API / `fastlane pilot`) so there's no interactive login. Tester management is also scriptable via the App Store Connect API; assigning builds to external groups still triggers Beta App Review.
+The same GitHub Actions shape as the Developer ID job applies, swapping the sign/notarize step for archive → export (`method: app-store-connect`) → upload. Authenticate uploads with an **App Store Connect API key** (`--apiKey`/`--apiIssuer`, or the App Store Connect API / `fastlane pilot`) so there's no interactive login. Tester management is also scriptable via the App Store Connect API; assigning builds to external groups still triggers Beta App Review.
 
 ### Gotchas
 

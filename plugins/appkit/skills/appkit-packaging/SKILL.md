@@ -39,7 +39,7 @@ The suite never blocks you from shipping these — it tells you the trade-off so
 | Staple the ticket | `xcrun stapler staple MyApp.app` |
 | Gatekeeper check | `spctl -a -vvv -t install MyApp.app` |
 
-> The `notarize.sh` script bundled with this skill runs the whole sign → zip → submit → staple → verify chain. Use it once you have a Release build and a stored notary profile.
+> The `scripts/notarize.sh` script bundled with this skill runs the whole sign → zip → submit → staple → verify chain. Use it once you have a Release build and a stored notary profile.
 
 ### End-to-End Workflow (Developer ID)
 
@@ -160,7 +160,7 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with: { xcode-version: '26' }
       # import Developer ID cert from secrets into a temp keychain, then:
-      - run: ./plugins/appkit/skills/appkit-packaging/notarize.sh ...
+      - run: ./plugins/appkit/skills/appkit-packaging/scripts/notarize.sh ...
 ```
 
 ### TestFlight (beta distribution)
@@ -177,6 +177,39 @@ Flow:
 5. **Testers install** via the macOS TestFlight app and send feedback/crash reports. **Builds expire 90 days** after upload; ship a new build to continue.
 
 Don't use TestFlight to ship to end users in place of the store — Apple prohibits it and it risks account action. See `references/ci-and-app-store.md` for the upload commands, `ExportOptions.plist`, and CI automation (shared with the App Store section).
+
+### Mac App Store pipeline (build → export → upload)
+
+TestFlight and the Mac App Store are **one** pipeline — and it is a different beast from Developer ID. The load-bearing differences (mixing them = rejection):
+
+| | Developer ID (web / Sparkle) | App Store / TestFlight |
+|---|---|---|
+| App signing cert | **Developer ID Application** | **Apple Distribution** |
+| Installer cert | Developer ID Installer | **Mac Installer Distribution** (*not* Developer ID Installer) |
+| Hardened runtime | **required** (`--options runtime`) | not used |
+| App Sandbox | optional | **mandatory** — `com.apple.security.app-sandbox` |
+| Apple gate | **notarization** (`notarytool`) | **App Review** (no notarization) |
+| Upload artifact | signed `.dmg` / `.pkg` | signed flat `.pkg` |
+| Provisioning profile | none | Mac App Store profile for the bundle id |
+
+> **`notarytool` is NOT a store uploader.** It only talks to the notary service (Developer ID). Store/TestFlight upload is `altool --upload-app`, Transporter, or the App Store Connect API — never `notarytool`.
+
+**Flow (steps 2–3 are the bundled scripts):**
+
+1. **Archive** with App Sandbox on and an increasing `CFBundleVersion`: `xcodebuild -scheme MyApp -configuration Release archive -archivePath MyApp.xcarchive`.
+2. **Export** from the xcarchive with an `ExportOptions.plist` whose `method` is **`app-store-connect`** — **`app-store` is deprecated** (Xcode 27 still accepts it as an alias, but use the current value):
+   ```bash
+   xcodebuild -exportArchive -archivePath MyApp.xcarchive \
+     -exportOptionsPlist ExportOptions-AppStore.plist -exportPath ./export
+   ```
+   (Set `destination = upload` in the plist to have `xcodebuild` upload directly and skip step 3.)
+3. **Upload** with the App Store Connect **API key** — no interactive passwords:
+   ```bash
+   xcrun altool --validate-app -f ./export/MyApp.pkg -t macos --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
+   xcrun altool --upload-app   -f ./export/MyApp.pkg -t macos --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
+   ```
+   > **CI trap:** `altool` takes **no key path** — it searches `./private_keys`, `~/private_keys`, `~/.private_keys`, `~/.appstoreconnect/private_keys`, and `$API_PRIVATE_KEYS_DIR` for a file named exactly `AuthKey_<KEYID>.p8`. In CI, base64-decode your `.p8` into one of those dirs under that name first (or pass `--p8-file-path`). (`notarytool`, by contrast, takes `--key <path>`.) For a **Team** API key pass `--apiIssuer`; for an **Individual** key **omit** it (passing it returns 401).
+4. **Submit for Review** — **no first-party CLI** for the final submit; do it in App Store Connect (or `fastlane deliver` / the ASC API). TestFlight internal testers get the build right after processing with no review.
 
 ### Troubleshooting
 
@@ -195,5 +228,7 @@ Don't use TestFlight to ship to end users in place of the store — Apple prohib
 
 | File | Read when… |
 |---|---|
-| `notarize.sh` | You want the sign → notarize → staple → verify chain run for you |
-| `references/ci-and-app-store.md` | Setting up GitHub Actions release CI, distributing via TestFlight, or submitting to the Mac App Store |
+| `scripts/notarize.sh` | Developer ID: sign → notarize (`notarytool`) → staple → verify, run for you — ASC API key, no passwords |
+| `scripts/app-store-upload.sh` | Validate + upload a store `.pkg` to App Store Connect (TestFlight / MAS) with an ASC API key |
+| `scripts/mas-export-submit.sh` | Archive → export (`method=app-store-connect`) → upload for the Mac App Store |
+| `references/ci-and-app-store.md` | GitHub Actions release CI, `ExportOptions.plist` templates (Developer ID + App Store), App Sandbox entitlements, tester management |
