@@ -43,6 +43,8 @@ Steps:
 
 ```swift
 class LocalWeatherView: NSView {
+    let minimumCornerRadius: CGFloat = 8
+
     override var cornerConfiguration: NSViewCornerConfiguration? {
         let radius: NSViewCornerRadius = .containerConcentric(minimumCornerRadius)
         return .uniformCorners(radius: radius)
