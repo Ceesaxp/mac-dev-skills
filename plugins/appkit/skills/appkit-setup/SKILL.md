@@ -119,6 +119,21 @@ If declined, print the command and continue.
 
 > **Signing identities are NOT set up here.** A **Developer ID Application** certificate is only needed for `appkit-packaging` (signing/notarization). Creating it involves the Apple Developer portal and your Apple account — out of scope for machine setup. If `appkit-packaging` later reports no identity, point the user to the portal (Certificates → Developer ID Application).
 
+##### Build the native tools (required — the suite's grounding tools)
+
+`appkit-api` (SDK symbol/availability validator) and `appkit-search` (HIG-grounded pattern search) back the whole suite — `appkit-design` and the agent call them constantly. Build, sign, and install both (idempotent; needs the full Xcode):
+```bash
+scripts/build-tools.sh    # builds → ad-hoc signs → installs appkit-api + appkit-search (with its corpus bundle) into ~/.local/bin
+```
+Confirm they work: `appkit-api check NSGlassEffectView` and `appkit-search list` should both return JSON.
+
+##### Optional research tooling (advanced / dual-use — only if the user wants it)
+
+These are **not** needed for normal app building; set them up only for `appkit-private-apis` / `appkit-app-inspector`.
+
+- **flexscope** (runtime inspector, drives `appkit-app-inspector`) — the user's **separate** repo. If it's present at its path, build it: `( cd "$FLEXSCOPE_DIR" && swift build -c release && ./scripts/sign.sh )`, then gate with `flexscope doctor` (it must be all-green — SIP/AMFI/library-validation off; see `appkit-app-inspector`). **Dev-box only.** If absent, point the user to `appkit-app-inspector` for how to obtain/build it — do **not** clone it automatically.
+- **PrivateHeaderKit** (header dumper, used by `appkit-private-apis`) — check whether `privateheaderkit-dump` is on `PATH`; if not, point the user to `appkit-private-apis` (`swift run -c release privateheaderkit-install` from its repo). It's a static dumper — no SIP changes.
+
 ### Final summary — always print this
 
 After everything, print a single-table summary so the user knows exactly what changed:
@@ -132,7 +147,9 @@ Tuist                 ✅ installed
 swift-format          ✅ upgraded to latest
 create-dmg            ✅ installed
 DevToolsSecurity      ✅ enabled   (or ⏭ skipped — user declined)
+Native tools          ✅ appkit-api + appkit-search built & installed (~/.local/bin)
 Developer ID identity ⏭ 0 found (only needed for signing — see appkit-packaging)
+Research tooling      ⏭ flexscope / PrivateHeaderKit not set up (optional — see appkit-app-inspector / appkit-private-apis)
 
 You're ready. Try:
   Activate the appkit-dev agent and ask it to "build me a macOS markdown editor with a live preview"
