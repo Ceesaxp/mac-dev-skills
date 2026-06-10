@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:mac-dev-skills}/src/tools/appkit-api",
+            "name": "Debug appkit-api (src/tools/appkit-api)",
+            "target": "appkit-api",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug appkit-api (src/tools/appkit-api)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:mac-dev-skills}/src/tools/appkit-api",
+            "name": "Release appkit-api (src/tools/appkit-api)",
+            "target": "appkit-api",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release appkit-api (src/tools/appkit-api)"
+        }
+    ]
+}
