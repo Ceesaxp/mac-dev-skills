@@ -2,7 +2,7 @@
 
 The full catalog of AppKit design mistakes a capable agent makes from memory — each paired with the verified, corpus-grounded correction.
 
-HIG anchors: [Lists and tables](https://developer.apple.com/design/human-interface-guidelines/lists-and-tables) · [Materials](https://developer.apple.com/design/human-interface-guidelines/materials) · [Typography](https://developer.apple.com/design/human-interface-guidelines/typography) · [Color](https://developer.apple.com/design/human-interface-guidelines/color) · [Split views](https://developer.apple.com/design/human-interface-guidelines/split-views) · [Gestures](https://developer.apple.com/design/human-interface-guidelines/gestures). Every symbol below is verified with `appkit-api`; align every "when to use" with the cited page.
+HIG anchors: [Lists and tables](https://developer.apple.com/design/human-interface-guidelines/lists-and-tables) · [Materials](https://developer.apple.com/design/human-interface-guidelines/materials) · [Typography](https://developer.apple.com/design/human-interface-guidelines/typography) · [Color](https://developer.apple.com/design/human-interface-guidelines/color) · [Split views](https://developer.apple.com/design/human-interface-guidelines/split-views) · [Gestures](https://developer.apple.com/design/human-interface-guidelines/gestures). Every symbol below is verified with `sdk-api`; align every "when to use" with the cited page.
 
 > **The trap:** you reach for the right control name from memory, then ship the part that actually breaks — an invented or wrong symbol, a false equivalence (`.inset` = glass), a hardcoded frame, zero accessibility identifiers. The corrections are SDK-verified, not recalled.
 

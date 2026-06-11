@@ -4,7 +4,7 @@ Use semantic system `NSColor`s so the UI survives Dark Mode, Increase Contrast, 
 
 HIG reference: [Color](https://developer.apple.com/design/human-interface-guidelines/color) — "Use system-defined colors" and "Support Dark Mode and Increase Contrast." Semantic colors are dynamic: their resolved value depends on the current appearance, so the system adapts them for you.
 
-All symbols below verified with `appkit-api`. All semantic `NSColor`s have existed since 10.10–10.14; none require macOS 26 gating.
+All symbols below verified with `sdk-api`. All semantic `NSColor`s have existed since 10.10–10.14; none require macOS 26 gating.
 
 ## Semantic NSColor catalog
 

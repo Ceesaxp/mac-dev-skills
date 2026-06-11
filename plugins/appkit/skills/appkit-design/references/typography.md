@@ -4,7 +4,7 @@ Use semantic `NSFont` text styles and system designs so text inherits system met
 
 HIG: Typography — https://developer.apple.com/design/human-interface-guidelines/typography (corpus `semantic-font-text-style`). The HIG favors built-in semantic text styles and standard text controls over custom text drawing; align every choice below with that page.
 
-Every symbol here is verified with `appkit-api`. All `NSFont.TextStyle` constants are macOS 11.0+; system designs are macOS 10.15+.
+Every symbol here is verified with `sdk-api`. All `NSFont.TextStyle` constants are macOS 11.0+; system designs are macOS 10.15+.
 
 ## Text-style ramp
 

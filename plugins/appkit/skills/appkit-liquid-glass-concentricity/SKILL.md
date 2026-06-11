@@ -28,7 +28,7 @@ If you adopted Liquid Glass in macOS 26, running on macOS 27 you get these **aut
 **Opt-in:** the **interactive glass effect** (new in macOS 27) — glass that subtly *bounces when clicked*, giving the sense the control is responding to interaction. Maps uses it for a few custom controls.
 
 - Use it **only** with controls and buttons, or glass containers of interactive controls. Not for every use of glass. **A little goes a long way.**
-- The interactive-glass property is **`NSGlassEffectView.effectIsInteractive`** (`Bool`, get/set; macOS **27.0**) — SDK-verified with `appkit-api`. Gate it: `if #available(macOS 27, *) { glass.effectIsInteractive = true }`.
+- The interactive-glass property is **`NSGlassEffectView.effectIsInteractive`** (`Bool`, get/set; macOS **27.0**) — SDK-verified with `sdk-api`. Gate it: `if #available(macOS 27, *) { glass.effectIsInteractive = true }`.
 
 ## Concentricity (`NSViewCornerConfiguration`)
 
@@ -56,7 +56,7 @@ class LocalWeatherView: NSView {
 
 - **Hardcoding `layer.cornerRadius` near a container corner.** That's exactly where `cornerConfiguration` + `.containerConcentric` belongs — audit those sites first.
 - **Applying interactive glass everywhere.** Restrict it to interactive controls/buttons or their glass containers.
-- **Guessing a macOS 27 symbol.** The interactive-glass property is `NSGlassEffectView.effectIsInteractive` (27.0) — verify any new symbol with `appkit-api check` rather than inventing one. (This property is the exact "TBD" that motivated building `appkit-api`.)
+- **Guessing a macOS 27 symbol.** The interactive-glass property is `NSGlassEffectView.effectIsInteractive` (27.0) — verify any new symbol with `sdk-api check` rather than inventing one. (This property is the exact "TBD" that motivated building `sdk-api`.)
 
 ## Recap
 

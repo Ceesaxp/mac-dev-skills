@@ -9,7 +9,7 @@ description: Use when designing or building any macOS AppKit user interface — 
 
 Pick the canonical AppKit control and layout for a UI requirement, ground every choice in the Apple Human Interface Guidelines, and write modern, symbol-verified macOS 26/27 code.
 
-**This skill ships two native tools next to this file** — `appkit-search` (BM25 search over a curated, HIG-grounded corpus of 69 canonical AppKit patterns) and `appkit-api` (SDK symbol + availability validator). Both are also on `PATH` after `scripts/build-tools.sh`. **The corpus is the control catalog; this skill is the discipline that makes you use it.**
+**This skill ships two native tools next to this file** — `sdk-search` (BM25 search over a curated, HIG-grounded corpus of 69 canonical AppKit patterns) and `sdk-api` (SDK symbol + availability validator). Both are also on `PATH` after `scripts/build-tools.sh`. **The corpus is the control catalog; this skill is the discipline that makes you use it.**
 
 > **You already know most of the controls. That is the trap.** A capable agent reaches for the right control from memory (`NSSplitViewController`, a view-based `NSTableView`, `NSGridView`) and then *skips everything that actually breaks*: it invents a symbol that doesn't exist, asserts a false equivalence (“`.inset` gives you Liquid Glass”), hardcodes a window frame, and ships zero accessibility identifiers. **Every recommendation below is verified against the SDK or the HIG, never from memory — because memory is exactly where the errors are.**
 
@@ -17,20 +17,20 @@ Pick the canonical AppKit control and layout for a UI requirement, ground every 
 
 **Before writing any AppKit UI, ground it. Two authorities, no exceptions:**
 
-1. **`appkit-search`** for the canonical pattern. One focused query per feature you need:
+1. **`sdk-search`** for the canonical pattern. One focused query per feature you need:
    ```bash
-   appkit-search search "settings sidebar" "file table" "toolbar"   # batch: one query per feature
-   appkit-search get splitviewcontroller-sidebar-inspector          # full Swift + HIG ref + pitfalls
-   appkit-search list                                                # browse categories (heavy)
+   sdk-search search "settings sidebar" "file table" "toolbar"   # batch: one query per feature
+   sdk-search get splitviewcontroller-sidebar-inspector          # full Swift + HIG ref + pitfalls
+   sdk-search list                                                # browse categories (heavy)
    ```
-2. **`appkit-api`** to verify *every* symbol and its macOS availability before you write it:
+2. **`sdk-api`** to verify *every* symbol and its macOS availability before you write it:
    ```bash
-   appkit-api check 'NSGlassEffectView.effectIsInteractive'   # exists? → {exists, availability}
-   appkit-api availability NSViewCornerConfiguration          # min macOS / deprecation
-   appkit-api members NSSplitViewItem                         # discover the real members
+   sdk-api check 'NSGlassEffectView.effectIsInteractive'   # exists? → {exists, availability}
+   sdk-api availability NSViewCornerConfiguration          # min macOS / deprecation
+   sdk-api members NSSplitViewItem                         # discover the real members
    ```
 
-**Workflow:** front-load all `search` calls for the page → `get` the best pattern IDs → verify the symbols you'll use with `appkit-api` → *then* write code, adapting the corpus snippets. Do not interleave searching with coding.
+**Workflow:** front-load all `search` calls for the page → `get` the best pattern IDs → verify the symbols you'll use with `sdk-api` → *then* write code, adapting the corpus snippets. Do not interleave searching with coding.
 
 > **"This is just a code sketch, I'll answer directly."** No. That sentence is the #1 failure mode — it is how invented symbols and false claims ship. A sketch that names a wrong API is worse than no sketch. **Sketch or production, the grounding is the same two commands.** If the tools aren't installed, run `scripts/build-tools.sh` (or tell the user to) — don't fall back to memory.
 
@@ -50,7 +50,7 @@ Apply to **every** design, no matter how small. These are the things a strong mo
 
 ### Step 1 — App type → anchor structure
 
-Identify the app type; it fixes the window's spine. Then `appkit-search` the anchor pattern.
+Identify the app type; it fixes the window's spine. Then `sdk-search` the anchor pattern.
 
 | App type | Anchor structure | Start from corpus |
 |----------|------------------|-------------------|
@@ -65,7 +65,7 @@ Identify the app type; it fixes the window's spine. Then `appkit-search` the anc
 
 ### Step 2 — Requirement → canonical control
 
-Map each requirement to a control, then `appkit-search get` the pattern. Don't write the plumbing from memory.
+Map each requirement to a control, then `sdk-search get` the pattern. Don't write the plumbing from memory.
 
 | Requirement | Control | Corpus pattern |
 |-------------|---------|----------------|
@@ -94,7 +94,7 @@ Derive the size from the layout's `fittingSize`, not a literal frame. Rubric + t
 
 ### Step 5 — Adopt Liquid Glass (macOS 26/27)
 
-`NSGlassEffectView` (26.0) / `NSGlassEffectContainerView` (26.0) for floating glass chrome; `.effectIsInteractive` (27.0) for click-responsive glass; `NSVisualEffectView` materials for window/sidebar vibrancy; `NSViewCornerConfiguration` + `.containerConcentric` (27.0) for concentric corners; `NSScrollEdgeEffectStyle` (26.1) for scroll edges. **Gate everything below your deployment target with `if #available` — confirm each version with `appkit-api availability`.** → `references/liquid-glass.md`
+`NSGlassEffectView` (26.0) / `NSGlassEffectContainerView` (26.0) for floating glass chrome; `.effectIsInteractive` (27.0) for click-responsive glass; `NSVisualEffectView` materials for window/sidebar vibrancy; `NSViewCornerConfiguration` + `.containerConcentric` (27.0) for concentric corners; `NSScrollEdgeEffectStyle` (26.1) for scroll edges. **Gate everything below your deployment target with `if #available` — confirm each version with `sdk-api availability`.** → `references/liquid-glass.md`
 
 ### Step 6 — Accessibility baseline
 
@@ -118,8 +118,8 @@ Identifier on every interactive control (≠ label); semantic roles; respect Inc
 
 | Excuse | Reality |
 |--------|---------|
-| "It's just a code sketch, not a build task — I'll answer from memory." | The sketch is where wrong symbols enter. Run `appkit-search` + `appkit-api` anyway. |
-| "I know `NSGlassEffectView`/this color/this font exists." | Then `appkit-api check` costs you 1 second to prove it and its min-macOS. Knowing isn't verifying. |
+| "It's just a code sketch, not a build task — I'll answer from memory." | The sketch is where wrong symbols enter. Run `sdk-search` + `sdk-api` anyway. |
+| "I know `NSGlassEffectView`/this color/this font exists." | Then `sdk-api check` costs you 1 second to prove it and its min-macOS. Knowing isn't verifying. |
 | "The sidebar/`.inset` style already gives the glass look." | Implicit material in one place ≠ adopting Liquid Glass. Adopt it explicitly where the design calls for it. |
 | "I added an accessibility label, that covers a11y." | Label (VoiceOver text) ≠ identifier (UI-test handle). Set the identifier too. |
 | "I'll size the window with a frame that looks about right." | Derive it from `fittingSize`. A guessed frame clips on the next display. |

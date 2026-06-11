@@ -57,7 +57,7 @@ let icon = NSImage(systemSymbolName: "trash", accessibilityDescription: "Delete"
 | Respect **Reduce Transparency** | `NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency` (10.10) | Drop vibrancy/glass for opaque fills |
 | React to changes live | `NSWorkspace.accessibilityDisplayOptionsDidChangeNotification` (10.10) | Observe on `NSWorkspace.shared.notificationCenter` |
 
-Roles `.button`, `.image`, `.group` are members of the `NSAccessibility.Role` struct — verify others with `appkit-api members NSAccessibility.Role` before using.
+Roles `.button`, `.image`, `.group` are members of the `NSAccessibility.Role` struct — verify others with `sdk-api members NSAccessibility.Role` before using.
 
 ## GOOD example — custom view as an accessibility element
 
@@ -124,6 +124,6 @@ NSWorkspace.shared.notificationCenter.addObserver(
 
 ## Verify before you ship
 
-- `appkit-api check 'NSAccessibilityProtocol.setAccessibilityIdentifier(_:)'` — confirm the symbol and its 10.10 floor.
-- `appkit-api members NSAccessibility.Role` — pick the *real* role for a custom view; don't guess the constant.
+- `sdk-api check 'NSAccessibilityProtocol.setAccessibilityIdentifier(_:)'` — confirm the symbol and its 10.10 floor.
+- `sdk-api members NSAccessibility.Role` — pick the *real* role for a custom view; don't guess the constant.
 - Test in **light, dark, Increase Contrast, keyboard-only, and resized-window** states before calling it done.

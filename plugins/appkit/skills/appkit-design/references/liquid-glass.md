@@ -6,7 +6,7 @@ HIG: [Materials](https://developer.apple.com/design/human-interface-guidelines/m
 
 ## Version table
 
-Every modern symbol must be `@available`/`if #available` gated. Verified with `appkit-api availability`.
+Every modern symbol must be `@available`/`if #available` gated. Verified with `sdk-api availability`.
 
 | Symbol | Min macOS | Gate required |
 |---|---|---|

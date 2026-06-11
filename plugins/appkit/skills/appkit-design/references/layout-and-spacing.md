@@ -4,7 +4,7 @@ Pin AppKit views with anchor constraints, pick NSStackView vs NSGridView correct
 
 **HIG reference:** [Human Interface Guidelines — Layout](https://developer.apple.com/design/human-interface-guidelines/layout). Align with its core themes: respect safe areas, keep margins and spacing consistent, group related elements, and design layouts that adapt to window resizing rather than fixed frames.
 
-All symbols below verified against the macOS SDK with `appkit-api check`. Every API here ships in macOS 12+ (no Liquid Glass gating needed). Use semantic `NSColor` and `NSFont.preferredFont(forTextStyle:)` — never literal RGB or `systemFont(ofSize:)` for content text.
+All symbols below verified against the macOS SDK with `sdk-api check`. Every API here ships in macOS 12+ (no Liquid Glass gating needed). Use semantic `NSColor` and `NSFont.preferredFont(forTextStyle:)` — never literal RGB or `systemFont(ofSize:)` for content text.
 
 ---
 

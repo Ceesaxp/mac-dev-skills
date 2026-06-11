@@ -121,11 +121,11 @@ If declined, print the command and continue.
 
 ##### Build the native tools (required — the suite's grounding tools)
 
-`appkit-api` (SDK symbol/availability validator) and `appkit-search` (HIG-grounded pattern search) back the whole suite — `appkit-design` and the agent call them constantly. Build, sign, and install both (idempotent; needs the full Xcode):
+`sdk-api` (SDK symbol/availability validator) and `sdk-search` (HIG-grounded pattern search) back the whole suite — `appkit-design` and the agent call them constantly. Build, sign, and install both (idempotent; needs the full Xcode):
 ```bash
-scripts/build-tools.sh    # builds → ad-hoc signs → installs appkit-api + appkit-search (with its corpus bundle) into ~/.local/bin
+scripts/build-tools.sh    # builds → ad-hoc signs → installs sdk-api + sdk-search (with its corpus bundle) into ~/.local/bin
 ```
-Confirm they work: `appkit-api check NSGlassEffectView` and `appkit-search list` should both return JSON.
+Confirm they work: `sdk-api check NSGlassEffectView` and `sdk-search list` should both return JSON.
 
 ##### Optional research tooling (advanced / dual-use — only if the user wants it)
 
@@ -147,7 +147,7 @@ Tuist                 ✅ installed
 swift-format          ✅ upgraded to latest
 create-dmg            ✅ installed
 DevToolsSecurity      ✅ enabled   (or ⏭ skipped — user declined)
-Native tools          ✅ appkit-api + appkit-search built & installed (~/.local/bin)
+Native tools          ✅ sdk-api + sdk-search built & installed (~/.local/bin)
 Developer ID identity ⏭ 0 found (only needed for signing — see appkit-packaging)
 Research tooling      ⏭ flexscope / PrivateHeaderKit not set up (optional — see appkit-app-inspector / appkit-private-apis)
 

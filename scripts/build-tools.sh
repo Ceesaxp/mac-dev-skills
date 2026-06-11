@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+#
+# SUPERSEDED. This script builds the original `appkit-api` / `appkit-search`
+# sources retained under `src/tools/` (see src/tools/DEPRECATED.md). The
+# canonical tools now live in the `apple-platform-tools` monorepo at
+# ~/Developer/Projects/apple-platform-tools as `sdk-api` / `sdk-search`,
+# and are built and installed from there via `mise run install`. New work
+# happens in the monorepo; this script is kept only to rebuild the historical
+# originals.
+#
 # Build the native AppKit dev tools, ad-hoc sign them, and install into the
 # skill dirs that use them (and ~/.local/bin for direct use).
 set -euo pipefail

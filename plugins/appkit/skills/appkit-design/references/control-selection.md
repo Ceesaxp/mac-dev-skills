@@ -31,7 +31,7 @@ The HIG favors recognizable, standard AppKit components with semantic appearance
 | Increment/decrement discrete value | `NSStepper` | `increment`, `valueWraps` | `switch-slider-stepper-values` |
 | Open / save files | `NSOpenPanel` / `NSSavePanel` + `UTType` | `allowedContentTypes`, `beginSheetModal(for:)`, `urls` | `open-save-panel-utype` |
 
-Pull the real code with `appkit-search get <id>`; adapt it, don't rewrite from memory.
+Pull the real code with `sdk-search get <id>`; adapt it, don't rewrite from memory.
 
 ## Legacy forms to avoid
 

@@ -22,7 +22,7 @@ The HIG Windows guidance favors standard windows, toolbars, tabs, and split view
 | Menu-bar utility | `NSStatusItem` from `NSStatusBar.system` | Lives in the menu bar, no main window required | `statusitem-menubar-extra` |
 | Utility / form / settings pane | `NSPanel` (or window) + `NSGridView` | Auxiliary task; grid aligns label/field pairs across sizes and localization | `gridview-label-field-form` |
 
-Pull the real code with `appkit-search get <id>`; adapt it, don't rewrite from memory.
+Pull the real code with `sdk-search get <id>`; adapt it, don't rewrite from memory.
 
 ## Choosing the spine
 
