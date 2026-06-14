@@ -8,7 +8,7 @@
   "category": "macos-development",
   "keywords": [
     "macos", "appkit", "cocoa", "swift", "swift6", "xcode", "tuist",
-    "liquid-glass", "nsglasseffectview", "concentricity", "hig",
+    "liquid-glass", "nsglasseffectview", "concentricity", "hig", "human-interface-guidelines",
     "xcuitest", "swift-testing", "notarization", "testflight",
     "mac-app-store", "developer-id", "codesign", "notarytool",
     "nsview", "nsviewcontroller", "nswindow", "nstableview", "nstoolbar",

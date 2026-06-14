@@ -8,7 +8,7 @@ Add this marketplace, then install the `appkit` plugin:
 - `/plugin install appkit`
 
 ## What's inside
-- **13 skills** under `plugins/appkit/skills/` — `appkit-design` (the flagship: control selection, layout, semantic color/typography, Liquid Glass, window sizing, a11y — wired to both tools), setup, dev-workflow, code-review, ui-testing, packaging (Developer ID + TestFlight + Mac App Store), migration, three macOS-26/27 modernization skills (launch-continuity, modern-input, liquid-glass-concentricity), `appkit-private-apis` + `appkit-app-inspector` (advanced / dual-use), and `appkit-session-report`.
+- **14 skills** under `plugins/appkit/skills/` — `appkit-design` (the flagship: control selection, layout, semantic color/typography, Liquid Glass, window sizing, a11y — wired to both tools), `appkit-hig` (the complete Apple Human Interface Guidelines bundled offline as a router skill — the design authority `appkit-design` implements against), setup, dev-workflow, code-review, ui-testing, packaging (Developer ID + TestFlight + Mac App Store), migration, three macOS-26/27 modernization skills (launch-continuity, modern-input, liquid-glass-concentricity), `appkit-private-apis` + `appkit-app-inspector` (advanced / dual-use), and `appkit-session-report`.
 - **`appkit-dev` agent** — builds AppKit apps end-to-end.
 - **Native tools** — `sdk-api` (SDK API + availability validator) and `sdk-search` (AppKit/HIG pattern search). **The native tools now live in the [`apple-platform-tools`](../../Projects/apple-platform-tools) monorepo** (built/installed via `mise run install`); the original `appkit-api` / `appkit-search` sources are retained here under `src/tools/` for history (see `src/tools/DEPRECATED.md`).
 
