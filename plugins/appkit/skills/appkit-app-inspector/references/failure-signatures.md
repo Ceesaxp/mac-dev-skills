@@ -1,92 +1,87 @@
 # Exit Codes & Failure Signatures
 
-Branch on `flexscope`'s exit code; recognize each characteristic failure signature and report its one-line remedy instead of retrying a call that cannot succeed.
+Branch on `uitool`'s exit code; recognize each characteristic failure signature and report its one-line remedy instead of retrying a call that cannot succeed.
 
-`flexscope <verb> <app=pid|bundleid> [flags]` — JSON on stdout, diagnostic JSON on stderr. The agent branches on the exit code **without parsing prose**, then reads the envelope (`_meta`, `error.recover`) to refine.
+`uitool <verb> <app> [flags]` — JSON on stdout, diagnostic JSON on stderr. The agent branches on the exit code **without parsing prose**, then reads the envelope (`_meta`, `error.recover`) to refine. The authoritative table is `uitool schema`.
 
 ## Exit-code table (the control channel)
-
-The exit channel is FROZEN. **Exit 1 is unused.** **Exits 3 and 6 are attach-time only.**
 
 | Exit | Meaning | Agent branch |
 | --- | --- | --- |
 | 0 | ok | Read result. **0 matches is still exit 0** — read `_meta.totalMatched`, do not treat as failure. |
-| 2 | usage / bad selector | Fix the selector or flag (malformed node id, bad `[attr]`, unknown verb). Distinct from a 0-match. |
-| 3 | app not running | **Attach-time only.** Launch the target, then retry. |
-| 4 | not attached / injection failed | You called a query verb with no live session, or injection failed for a **non-precondition** reason (socket never opened, mach-port failure, target died). Re-`attach`; do not re-issue the query verb. (Precondition failures — arch/AMFI/LV/SIP — are exit **6**, not 4.) |
-| 5 | stale node | The held node id no longer resolves. **Re-walk** with `find`/`tree` for a fresh id — never re-deref the same id. |
-| 6 | SIP/AMFI/LV/arch precondition failed | **Attach-time only.** Run `doctor`; report the failing check + its `remedy`. Do not change SIP/AMFI autonomously. |
-| 7 | socket / main-thread timeout | `MAIN_THREAD_TIMEOUT` (≈500 ms hop) or socket error. Ensure session is live (re-`attach` if needed) and retry once. |
-| 8 | schema-version mismatch | CLI and dylib desynced (`schemaVersion` semver mismatch / `v` mismatch). Rebuild so CLI and FLEX-mac match. |
+| 2 | usage / `BAD_SELECTOR` / `UNKNOWN_FIELD` / `BAD_PREDICATE` | Fix the selector, `--fields` path, or predicate. Distinct from a 0-match. |
+| 3 | `APP_NOT_RUNNING` / `APP_NOT_FOUND` | The named target isn't running (or can't be resolved). Launch it / fix the id, then retry. |
+| 4 | `NOT_ATTACHED` / injection failed | A query verb with no live session, or injection failed (socket never opened, mach-port failure, target died). Re-`attach`/`launch`; don't re-issue the query verb. |
+| 5 | `STALE_NODE` | The held node id no longer resolves. **Re-walk** with `find`/`tree` for a fresh id — never re-deref the same id. |
+| 6 | precondition failed | The posture you need isn't usable. Run `doctor`; report the failing check + its `remedy`. Don't change SIP/AMFI autonomously. |
+| 7 | `TIMEOUT` | The ≈500 ms main-thread hop (or a socket) timed out. Confirm the session is live and the target idle; retry once. |
+| 8 | schema-version mismatch | CLI and the injected dylib desynced (`schemaVersion`). Rebuild so both agree (`mise run uitool-sign`). |
 
-Post-attach query verbs never emit 3 or 6: an unreachable session surfaces as **exit 4** (not attached) or **exit 7** (timeout). Exit 3 is emitted only by `attach` resolving a named target; exit 6 only by `doctor` / `attach` at the precondition gate. `list-apps` emits 0/2 only.
+In practice `doctor` is the verb that emits 6 (the precondition gate) and `attach`/`launch` resolve 3; a query verb against an unreachable session surfaces as **4** (not attached) or **7** (timeout), not 3/6. Read empty-vs-error from `_meta.totalMatched`, never from the exit code.
 
 ## Envelope fields the agent reads after exit 0
 
-FROZEN envelope, present unless `--no-meta`:
+Present unless `--no-meta`:
 
 | Field | Type | Use |
 | --- | --- | --- |
-| `schemaVersion` | string (semver) | In every payload; mismatch is exit 8, not a field check. |
-| `sessionId` | string | Wire form of node-id `sessionEpoch`; a changed value means a re-attach happened (held ids are stale). |
-| `_meta` | object | List/stream only: `{returned, truncated, totalMatched}`. `truncated` is the **only** "more exist" flag. |
+| `schemaVersion` | string (semver) | On post-attach payloads; a mismatch is exit 8, not a field check. |
+| `sessionId` | string | A changed value means a re-attach happened — any held node ids are stale. |
+| `_meta` | object | Stream verbs only: `{returned, truncated, totalMatched}`. `truncated` is the only "more exist" flag. |
 
-Read **empty-vs-error from `_meta.totalMatched`, never from the exit code.** Error responses (`ok:false`) carry `v`/`id`/`schemaVersion` + `error` but **not** `sessionId`/`_meta`.
+Error responses (`ok:false`) carry `schemaVersion` + the `error` object, but **not** `sessionId`/`_meta`.
 
 ## Failure-signature table
 
 | Signature | Exit | Cause | Remedy |
 | --- | --- | --- | --- |
-| Precondition unmet | 6 | A link in the injection stack failed (`doctor` check `sip`/`amfi`/`libval`/`arm64e-abi`/`arch`/`flexmac-built` fails). Any one failing → "dylib didn't load". | Report the failing check id + its `remedy` string. Do not touch SIP/AMFI yourself. |
-| arm64e mismatch | 6 | Dylib built plain-arm64, not arm64e → **dyld fails silently** ("missing compatible architecture"). Surfaced by `doctor` `arch` = `arm64` (a precondition check). | "Rebuild FLEX-mac arm64e." Do not retry attach until arch is shown to match. |
-| AMFI / LV still on | 6 | `doctor` `amfi`/`libval` check fails — AMFI enforcing or library validation on (code-directory-hash rejection, distinct from arch). | Confirm AMFI disabled (`amfi_get_out_of_my_way=0x1`, the real gate) and library validation off; the dylib is signed. |
-| Zero frames | 0 | Geometry read returns `{0,0,0,0}` — target not frontmost / off-screen, not an error. | Bring the target on-screen and retry; do not re-issue the identical query unchanged. |
-| Stale node | 5 | `STALE_NODE`: structural path recycled, pointer invalid, or recorded class no longer matches. Distinct from an occluded target. | Re-walk with `find`/`tree` for a fresh id. Never re-deref the recycled id. |
-| Zero matches | 0 | Valid selector matched nothing (`_meta.totalMatched: 0`). Not a tool failure, distinct from exit-2 bad selector. | Broaden the predicate (or drill a SwiftUI boundary). Do not re-issue the same selector. |
-| Not running | 3 | Named target not launched (attach-time). | Launch the target, then retry. |
-| Handshake / schema | 7 / 8 | 7 = socket/`MAIN_THREAD_TIMEOUT`; 8 = `schemaVersion`/`v` desync between separately-built CLI and dylib. | 7: confirm session live, retry once. 8: rebuild CLI + dylib to one schema. |
+| Precondition unmet | 6 | The posture you need isn't usable. Cooperative needs `arch` + `injectable-arm64`; unrestricted additionally needs `sip`/`amfi`/`libval`/`arm64e-abi`/`injectable-arm64e`. | Run `doctor`; report the failing check id + its `remedy`. Don't touch SIP/AMFI yourself. |
+| Not cooperatively injectable | 4/6 | Target has no `get-task-allow` (you didn't sign it). Cooperative can't reach it. | `uitool signing <target>` — if `cooperativeInjectable:false`, it's an unrestricted-posture target, not a bug. |
+| Injection failed | 4 | Session never opened (socket, mach-port, target died), or `attach` without the debugger entitlement. | Re-sign (`mise run uitool-sign`), confirm the target is alive + `get-task-allow`, retry. Read `error` for the specific cause. |
+| arm64/arm64e mismatch | 4/6 | Cooperative wants an **arm64** injectable to match a normal Xcode arm64 app; the unrestricted posture wants **arm64e** to match the system dyld cache. A mismatched dylib fails dyld **silently**. | Build the injectable for the posture's arch; `doctor` shows which `injectable-*` is present. |
+| Stale node | 5 | `STALE_NODE`: structural path recycled, pointer invalid, or recorded class no longer matches. | Re-walk with `find`/`tree` for a fresh id. Never re-deref the recycled id. |
+| Zero matches | 0 | Valid selector matched nothing (`_meta.totalMatched: 0`). Not a tool failure; distinct from exit-2 bad selector. | Broaden the predicate (or drill a SwiftUI boundary). Don't re-issue the same selector. |
+| Zero frames | 0 | Geometry reads `{0,0,0,0}` — target not frontmost / off-screen, not an error. | Bring the target on-screen and retry. |
+| Not running / not found | 3 | Named target not launched, or the id can't be resolved. | Launch the target / fix the id, then retry. |
+| Timeout | 7 | `TIMEOUT`: the main-thread hop (≈500 ms) or socket timed out — often a busy or modal target. | Confirm the session is live and the target idle (dismiss modals); retry once. |
+| Schema desync | 8 | `schemaVersion` mismatch between CLI and the injected dylib. | Rebuild both to one schema (`mise run uitool-sign`). |
 | SwiftUI boundary | 0 | Node has `swiftUIBoundary: true` (`NSHostingView`); class names below it are SwiftUI internals. | Trust `font`/`frame`/`fill` below it; **do not assert hand-written AppKit classes** below the boundary. |
-
-The arm64e-mismatch failure mode is **silent**: a plain-arm64 dylib produces no loud error, only an attach that didn't take. Treat any exit 4 with "missing compatible architecture" as arch, not AMFI/LV.
 
 ## ❌ Don't / ✅ Do
 
 ❌ Re-dereference a stale node id (exit 5) by re-issuing the read against the same id.
-✅ Re-walk the path with `find`/`tree` to mint a fresh id; the breadcrumb (`tr3`→`tr4`) is often guessable, but validate before deref.
+✅ Re-walk the path with `find`/`tree` to mint a fresh id; validate before deref.
 
 ❌ Treat exit 0 + `totalMatched: 0` as a tool failure and re-issue the identical selector.
-✅ Read the empty result from `_meta`, recognize it as valid, and **broaden** the selector (or drill a SwiftUI boundary).
+✅ Read the empty result from `_meta`, recognize it as valid, and **broaden** the selector.
 
 ❌ Conflate exit 2 (malformed selector) with exit 0 zero-match — they need opposite fixes.
 ✅ Branch on the exit code first: 2 → fix syntax; 0 → read `_meta` and broaden.
 
-❌ Retry an exit-4 attach blindly, or change SIP/AMFI on an exit 6, autonomously.
-✅ Split exit 4 by `error` (arch vs LV) and rebuild/fix; on exit 6 surface the `doctor` check + remedy and stop.
+❌ Change SIP/AMFI on an exit 6, or blindly retry an exit-4, autonomously.
+✅ On 6, surface the `doctor` check + remedy and stop for that posture; on 4, read `error` (entitlement vs target-died) and re-attach.
 
 ## One worked branch (shell + agent logic)
 
 ```bash
-flexscope find com.apple.mail --where "class ~ 'NSTableView'" --count-only
+uitool find com.example.MailClone --where "class ~ 'NSTableView'" --count-only
 code=$?
 case $code in
-  0) # success — but a match-count verb still needs _meta, not the code
-     total=$(jq '._meta.totalMatched' out.json)   # 0 here means BROADEN, not fail
-     if [ "$total" -eq 0 ]; then echo "0 matches: broaden the selector"; fi ;;
-  2) echo "usage/bad selector: fix the predicate syntax" ;;
-  3) echo "not running: launch Mail, then retry" ;;            # attach-time only
-  4) echo "not attached: inspect error.code — arch mismatch vs AMFI/LV — re-attach" ;;
+  0) total=$(jq '._meta.totalMatched' out.json)              # 0 here means BROADEN, not fail
+     [ "$total" -eq 0 ] && echo "0 matches: broaden the selector" ;;
+  2) echo "usage/bad selector: fix the predicate or --fields path" ;;
+  3) echo "not running/found: launch the target, then retry" ;;
+  4) echo "not attached / injection failed: re-attach; read error for entitlement vs target-died" ;;
   5) echo "stale node: re-walk with find/tree for a fresh id" ;;
-  6) echo "precondition: run flexscope doctor; report failing check + remedy" ;; # attach-time only
-  7) echo "timeout/socket: confirm session live, retry once" ;;
-  8) echo "schema mismatch: rebuild CLI and FLEX-mac to one schemaVersion" ;;
+  6) echo "precondition: run uitool doctor; report failing check + remedy, stop" ;;
+  7) echo "timeout: confirm session live + target idle, retry once" ;;
+  8) echo "schema mismatch: rebuild CLI + dylib to one schema (mise run uitool-sign)" ;;
 esac
 ```
 
-BAD foil — branching on stdout text instead of the frozen exit code:
+❌ Brittle foil — branching on stdout text instead of the exit code:
 
 ```bash
-# ❌ brittle: prose is not the contract; a 0-match here is exit 0, not "no results" error
-flexscope find com.apple.mail --where "…" | grep -q "no results" && retry_same_selector
+uitool find com.example.MailClone --where "…" | grep -q "no results" && retry_same_selector
+# prose is not the contract; a 0-match here is exit 0, not a "no results" error
 ```
-
-Exit-code defaults and IPC op-name strings (e.g. the single-node read op behind `ax-diff`) are **unspecified / [NEEDS CLARIFICATION]** in the frozen spec — do not invent them; see `--help` / the schema verb.
