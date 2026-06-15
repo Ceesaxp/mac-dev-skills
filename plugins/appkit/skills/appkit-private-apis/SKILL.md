@@ -24,20 +24,25 @@ Private-API use is a **distribution** decision, not a correctness one. Whenever 
 
 ## The workflow
 
-### 1. Dump the private headers — PrivateHeaderKit
+### 1. Discover the private surface — headerdump + redump
 
-[PrivateHeaderKit](https://github.com/lynnswap/PrivateHeaderKit) reconstructs Objective-C headers from framework binaries. It is a **header dumper only** — it ships no guidance on *using* the APIs (that's this skill). It is **static**: it reads `/System/Library/{Frameworks,PrivateFrameworks}` with standard tooling, so **it needs no SIP/AMFI changes** (unlike runtime injection — see `appkit-app-inspector`).
+Two **static** tools in the `apple-platform-tools` monorepo, installed together (`mise run install` → `~/.local/bin`). Both read the binary / dyld shared cache — **no SIP/AMFI changes, no entitlements** (unlike runtime injection — see `appkit-app-inspector`).
+
+- **`headerdump`** recovers an Objective-C framework's headers (class/method/property/ivar/protocol). Legacy-style CLI, single-letter flags, positional **path** (not an SDK target name):
 
 ```bash
-# Install once → drops privateheaderkit-dump, headerdump, headerdump-sim into ~/.local/bin
-swift run -c release privateheaderkit-install
-
-# Dump macOS headers — DEFAULT PLATFORM IS ios, so pass --platform macos explicitly
-privateheaderkit-dump --platform macos --target AppKit --out ./private-headers
-privateheaderkit-dump --platform macos --target @frameworks      # all public+private frameworks
+headerdump -o ./private-headers /System/Library/Frameworks/AppKit.framework   # add -c to read the dyld shared cache
 ```
 
-Output lands under `~/PrivateHeaderKit/generated-headers/…` (or `--out`). → `references/private-header-kit.md`
+- **`redump`** answers "what's actually *in* this Mach-O?" — symbols, imports, exports, strings, segments (native reads; disassembly is a gated, not-shipped slice):
+
+```bash
+redump exports <binary> | grep -i titlebar      # is the symbol there?
+redump imports <binary> --library CoreUI        # which dylib provides it?
+redump strings <binary> --filter FeatureFlag    # telling strings
+```
+
+→ `references/header-dumper.md`, `references/redump.md`
 
 ### 2. Browse / grep the dumped headers
 
@@ -100,17 +105,18 @@ extension NSView {
 | Swizzle and never call the original | Capture and invoke the original IMP every time |
 | Swizzle in a non-idempotent `+load`/init | One-time `static let` guard |
 | "Restoring is too hard, I'll leave it" | Stash the original IMP; provide an uninstall |
-| Private symbol from memory | Dump with PrivateHeaderKit + verify it exists at runtime (`responds(to:)` / `NSClassFromString`) |
-| Treat PrivateHeaderKit dumping as needing SIP off | It's a static dump — no SIP changes (that's the *inspector*, not this) |
+| Private symbol from memory | Dump with `headerdump` (or confirm with `redump`) + verify it exists at runtime (`responds(to:)` / `NSClassFromString`) |
+| Treat header dumping as needing SIP off | `headerdump` / `redump` are static reads — no SIP changes (that's the *inspector*, not this) |
 
 ## References
 
 | File | Read when… |
 |------|------------|
-| `references/private-header-kit.md` | Installing PrivateHeaderKit and dumping macOS private headers |
+| `references/header-dumper.md` | Dumping macOS private headers with `headerdump` (install, flags, simulator, runtime verification) |
+| `references/redump.md` | Finding symbols / imports / exports / strings in a Mach-O with `redump` |
 | `references/declaring-and-calling.md` | Declaring a private interface (category / bridging / `@objc` protocol / `dlsym`) and calling it |
 | `references/swizzling.md` | Writing a correct, restorable, thread-safe swizzle (and deciding whether to) |
 | `references/distribution-advisory.md` | The App-Store-review / Developer-ID trade-off to surface, and the `appkit-packaging` cross-reference |
 
 ---
-*Companion: `appkit-app-inspector` learns private structure from a **running** app (runtime injection, dev-box-only). This skill works from **static** dumped headers (no SIP changes).*
+*Companion: `appkit-app-inspector` (uitool) learns private structure from a **running** app (runtime injection — cooperative on a stock Mac for your own apps; the unrestricted defang only for apps you didn't sign). This skill works from **static** binaries — `headerdump` / `redump`, no SIP changes.*

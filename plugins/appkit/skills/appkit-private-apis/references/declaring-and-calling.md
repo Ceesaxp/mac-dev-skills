@@ -12,7 +12,7 @@ Given a private selector/class (from a header dump or runtime probe), declare a 
 | **`dlopen` / `dlsym`** | `dlsym(handle, "SomeCFunc")` → `unsafeBitCast` to a `@convention(c)` pointer | call the function pointer | private **C function** in a (possibly private) framework |
 | **`NSClassFromString` / `NSSelectorFromString`** | build `Class` / `SEL` from a runtime-assembled string | `cls.responds(to:)` then `perform(_:)` or `@objc protocol` cast | private **class** you must not name with a literal; defeats the *static* scanner |
 
-`unsafeBitCast`, `@convention(c)`, and `@objc protocol` are Swift language features (no header). But the **selectors, classes, ivars, and C symbols** you feed them must be real — confirm each against a header dump (`appkit-private-apis` → PrivateHeaderKit) before shipping.
+`unsafeBitCast`, `@convention(c)`, and `@objc protocol` are Swift language features (no header). But the **selectors, classes, ivars, and C symbols** you feed them must be real — confirm each against a header dump (`headerdump`) or a `redump` symbol/export read before shipping.
 
 ## Example — call a private ObjC method via `@objc protocol`, guarded
 
