@@ -121,18 +121,17 @@ If declined, print the command and continue.
 
 ##### Build the native tools (required — the suite's grounding tools)
 
-`sdk-api` (SDK symbol/availability validator) and `sdk-search` (HIG-grounded pattern search) back the whole suite — `appkit-design` and the agent call them constantly. Build, sign, and install both (idempotent; needs the full Xcode):
+`sdk-api` (SDK symbol/availability validator) and `sdk-search` (HIG-grounded pattern search) back the whole suite — `appkit-design` and the agent call them constantly. They live in the `apple-platform-tools` monorepo; `mise run install` builds, ad-hoc signs, and installs all four static tools (idempotent; needs the full Xcode):
 ```bash
-scripts/build-tools.sh    # builds → ad-hoc signs → installs sdk-api + sdk-search (with its corpus bundle) into ~/.local/bin
+mise run install    # from apple-platform-tools: builds + ad-hoc signs + installs sdk-api, sdk-search, headerdump, redump (with the search corpus bundle) into ~/.local/bin
 ```
 Confirm they work: `sdk-api check NSGlassEffectView` and `sdk-search list` should both return JSON.
 
 ##### Optional research tooling (advanced / dual-use — only if the user wants it)
 
-These are **not** needed for normal app building; set them up only for `appkit-private-apis` / `appkit-app-inspector`.
+`headerdump` and `redump` (static binary RE, used by `appkit-private-apis`) install with the core tools above (`mise run install`) — no extra setup, no SIP changes. The one tool **not** installed by default:
 
-- **flexscope** (runtime inspector, drives `appkit-app-inspector`) — the user's **separate** repo. If it's present at its path, build it: `( cd "$FLEXSCOPE_DIR" && swift build -c release && ./scripts/sign.sh )`, then gate with `flexscope doctor` (it must be all-green — SIP/AMFI/library-validation off; see `appkit-app-inspector`). **Dev-box only.** If absent, point the user to `appkit-app-inspector` for how to obtain/build it — do **not** clone it automatically.
-- **PrivateHeaderKit** (header dumper, used by `appkit-private-apis`) — check whether `privateheaderkit-dump` is on `PATH`; if not, point the user to `appkit-private-apis` (`swift run -c release privateheaderkit-install` from its repo). It's a static dumper — no SIP changes.
+- **uitool** (runtime inspector, drives `appkit-app-inspector`) — also in the `apple-platform-tools` monorepo, but deliberately **excluded** from `mise run install` (it's an injection tool). Build + sign it with `mise run uitool-sign` (grants the debugger entitlement needed for `attach`), then gate with `uitool doctor`. doctor reports two postures: **cooperative** (your own get-task-allow apps — works on a stock SIP-on Mac, no defang) and **unrestricted** (system/notarized apps — needs the dev-box defang). The signed injectable never ships. See `appkit-app-inspector`.
 
 ### Final summary — always print this
 
@@ -147,9 +146,9 @@ Tuist                 ✅ installed
 swift-format          ✅ upgraded to latest
 create-dmg            ✅ installed
 DevToolsSecurity      ✅ enabled   (or ⏭ skipped — user declined)
-Native tools          ✅ sdk-api + sdk-search built & installed (~/.local/bin)
+Native tools          ✅ sdk-api + sdk-search + headerdump + redump installed (~/.local/bin)
 Developer ID identity ⏭ 0 found (only needed for signing — see appkit-packaging)
-Research tooling      ⏭ flexscope / PrivateHeaderKit not set up (optional — see appkit-app-inspector / appkit-private-apis)
+Runtime inspector     ⏭ uitool not built (optional; mise run uitool-sign — see appkit-app-inspector)
 
 You're ready. Try:
   Activate the appkit-dev agent and ask it to "build me a macOS markdown editor with a live preview"

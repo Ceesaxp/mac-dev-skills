@@ -9,7 +9,7 @@ description: Use when designing or building any macOS AppKit user interface — 
 
 Pick the canonical AppKit control and layout for a UI requirement, ground every choice in the Apple Human Interface Guidelines, and write modern, symbol-verified macOS 26/27 code.
 
-**This skill ships two native tools next to this file** — `sdk-search` (BM25 search over a curated, HIG-grounded corpus of 69 canonical AppKit patterns) and `sdk-api` (SDK symbol + availability validator). Both are also on `PATH` after `scripts/build-tools.sh`. **The corpus is the control catalog; this skill is the discipline that makes you use it.**
+**This skill is built around two native tools** — `sdk-search` (BM25 search over a curated, HIG-grounded corpus of 69 canonical AppKit patterns) and `sdk-api` (SDK symbol + availability validator) — from the `apple-platform-tools` monorepo, on `PATH` after `mise run install`. **The corpus is the control catalog; this skill is the discipline that makes you use it.**
 
 > **You already know most of the controls. That is the trap.** A capable agent reaches for the right control from memory (`NSSplitViewController`, a view-based `NSTableView`, `NSGridView`) and then *skips everything that actually breaks*: it invents a symbol that doesn't exist, asserts a false equivalence (“`.inset` gives you Liquid Glass”), hardcodes a window frame, and ships zero accessibility identifiers. **Every recommendation below is verified against the SDK or the HIG, never from memory — because memory is exactly where the errors are.**
 
@@ -32,7 +32,7 @@ Pick the canonical AppKit control and layout for a UI requirement, ground every 
 
 **Workflow:** front-load all `search` calls for the page → `get` the best pattern IDs → verify the symbols you'll use with `sdk-api` → *then* write code, adapting the corpus snippets. Do not interleave searching with coding.
 
-> **"This is just a code sketch, I'll answer directly."** No. That sentence is the #1 failure mode — it is how invented symbols and false claims ship. A sketch that names a wrong API is worse than no sketch. **Sketch or production, the grounding is the same two commands.** If the tools aren't installed, run `scripts/build-tools.sh` (or tell the user to) — don't fall back to memory.
+> **"This is just a code sketch, I'll answer directly."** No. That sentence is the #1 failure mode — it is how invented symbols and false claims ship. A sketch that names a wrong API is worse than no sketch. **Sketch or production, the grounding is the same two commands.** If the tools aren't installed, run `mise run install` from apple-platform-tools (or tell the user to) — don't fall back to memory.
 
 ## Non-negotiable design hygiene
 
