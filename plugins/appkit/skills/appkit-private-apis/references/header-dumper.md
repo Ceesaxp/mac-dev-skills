@@ -1,105 +1,164 @@
-# headerdump — recover macOS private headers
+<!--
+Generated from apple-platform-tools.
+Do not edit downstream copies by hand; run scripts/generate-mac-dev-skills-contracts.sh.
+-->
 
-Dump an Objective-C framework's headers with `headerdump`, then grep them for a real selector and verify it at runtime. Static dumper — no SIP changes.
+# headerdump contract
 
-`headerdump` reconstructs Objective-C headers (classes, methods, properties, ivars, protocols, categories) from a Mach-O framework or the dyld shared cache. It is a **dumper only** — it ships no guidance on *calling* or swizzling private APIs; that is this skill's job. Because it is **static** (it reads the binary / shared cache, no runtime injection), it needs **no SIP / AMFI / library-validation changes and no special entitlements**. That is the key contrast with the runtime inspector (`appkit-app-inspector` / `uitool`).
+This file is the downstream-facing contract export for mac-dev-skills. It is
+assembled from the apple-platform-tools spec library so CLI behavior changes
+produce a mechanical diff downstream.
 
-It ships in the `apple-platform-tools` monorepo (a Swift port of lynnswap's PrivateHeaderKit — the `PH_*` env var names are the surviving lineage) and installs with the other static tools:
+## Source: `Features/headerdump/0001-dump-framework/commands/headerdump.dump.md`
 
-```bash
-mise run install      # builds + ad-hoc signs + installs sdk-api, sdk-search, headerdump, redump → ~/.local/bin
+---
+id: command.headerdump.dump
+kind: command
+depends-on: []
+---
+
+# `headerdump` — dump a framework's private headers
+
+<!--
+  headerdump has a single, default behavior (there is no sub-verb): given an
+  image, recover its ObjC and Swift declarations and write them as header FILES.
+  Its output contract is deliberately *not* the AgentCLI JSON projection the
+  other tools share — see "Output" below — so it does not depend on
+  `domain.agent-cli`.
+-->
+
+## Synopsis
+
+```
+headerdump [options] <filename|framework>
+headerdump [options] -r <sourcePath>
 ```
 
-Ensure `~/.local/bin` is on `PATH` afterward.
+## Inputs
 
-## 1. Invocation
+| Input | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `<filename\|framework>` | path | yes (unless `-r`) | A Mach-O file, or a `.framework`/`.app`/`.bundle`/`.xpc`/`.appex` bundle resolved to its executable. |
+| `<sourcePath>` (with `-r`) | path | yes (with `-r`) | A directory tree to walk; each bundle is resolved to its executable and dumped. |
+| `-o <dir>` | path | no | Output directory. Default: the current working directory. |
+| `-r` | flag | no | Recursive search: walk `<sourcePath>` and dump every supported image. |
+| `-b` | flag | no | Rebuild the image's original directory tree under the output dir. |
+| `-h` | flag | no | Add a `Headers/` folder under each bundle's rebuilt directory (only meaningful with `-b`). |
+| `-s` | flag | no | Skip files that already exist in the output dir (don't overwrite). |
+| `-j <name>` | string | no | Dump only the single class/protocol of that name (also matches a category by class or category name). |
+| `-c` | flag | no | Resolve images from the dyld shared cache. Recommended for simulator runtimes and modern system frameworks. |
+| `-D` | flag | no | Verbose diagnostics (to stderr). |
+| `-R` | flag | no | Prefer Objective-C runtime metadata over static parsing. Auto-enabled inside a simulator runtime. |
+| `--help` | flag | no | Print usage and exit 0. |
 
-`headerdump` is a legacy-style CLI — **no subcommands, single-letter flags**. The positional argument is a **path** (a framework bundle or a Mach-O file), not an SDK target name.
+Unknown flags (anything starting with `-` that isn't listed above) are
+**ignored** for forward/backward compatibility, not rejected. A leading
+positional argument is the input path; if more than one positional is given, the
+last one wins.
 
-```
-headerdump [<options>] <filename|framework>
-headerdump [<options>] -r <sourcePath>
-```
+### Environment overrides
 
-| Flag | Effect |
-|------|--------|
-| `-o <dir>` | Output directory (default: the current directory) |
-| `-r` | Recurse a source path, dumping every framework found |
-| `-b` | Rebuild the original directory structure under the output dir |
-| `-h` | Add a `Headers/` folder for bundles — **a real flag, NOT help** (use no args for usage) |
-| `-s` | Skip files already dumped |
-| `-j <name>` | Dump only a single class/protocol name |
-| `-c` | Use the dyld shared cache (recommended for simulator runtimes) |
-| `-D` | Verbose logging |
-| `-R` | Prefer Objective-C runtime metadata (auto-enabled inside a simulator) |
+These tune the static-vs-runtime metadata strategy without new flags. Each is
+also honored under a `SIMCTL_CHILD_` prefix so it survives `simctl spawn` into a
+simulator. Truthy = `1` or `true`.
 
-```bash
-# Dump one framework into a local, grep-friendly tree
-headerdump -o ./private-headers /System/Library/Frameworks/AppKit.framework
+| Variable | Effect |
+| --- | --- |
+| `PH_RUNTIME_ONLY` | Skip all static ObjC parsing (classes, protocols, categories) and use the live runtime; implies runtime fallback. |
+| `PH_SKIP_STATIC_CLASSES` | Skip the static class parse; use the runtime for classes. |
+| `PH_SKIP_STATIC_PROTOCOLS` | Skip the static protocol parse. |
+| `PH_SKIP_STATIC_CATEGORIES` | Skip the static category parse. |
+| `PH_STATIC_TIMEOUT` | Wall-clock budget (seconds) for the static class parse before auto-falling back to the runtime. `<= 0` disables the watchdog. Default `10`. |
+| `PH_RUNTIME_ROOT` / `DYLD_ROOT_PATH` | Rebase absolute image paths and shared-cache lookup onto a simulator runtime root. |
 
-# A single class only
-headerdump -o ./private-headers -j NSWindow /System/Library/Frameworks/AppKit.framework
-```
+## Behavior
 
-There is **no** `--platform` / `--target` / `--out` / `--layout` flag. Pass the actual framework path; unknown long flags are ignored (a stray `--target AppKit` makes `headerdump` treat `AppKit` as a filename and silently produce nothing). On modern macOS most system frameworks live only in the dyld shared cache — use `-c` to dump from there.
+1. Parse arguments. A missing input path, or a missing value for `-o`/`-j`, is a
+   usage error (see exit codes). `--help` prints usage and exits 0.
+2. If not already forced by `-R`, enable runtime fallback automatically when a
+   runtime root is present (i.e. running inside a simulator). Apply the
+   `PH_*` env overrides.
+3. Resolve the input: a bundle is resolved to its executable image; a plain file
+   is used directly. With `-r`, walk the tree, skipping the descendants of each
+   bundle once its executable is dumped.
+4. Load the Mach-O image. With `-c`, prefer the dyld shared cache (trying
+   versioned `Versions/{Current,A,B,C}` path variants and runtime-root–relative
+   paths); otherwise load from the file and fall back to the cache on failure.
+   Only `arm64`/`x86_64` slices are supported; a fat binary picks the first
+   supported slice.
+5. Recover Objective-C metadata: statically parse `__objc_*` classes, protocols,
+   and categories (unless skipped), and — when runtime fallback is on, or the
+   static class parse times out — merge in classes from the live Objective-C
+   runtime. On a static-parse timeout, partial static class results are dropped
+   and the runtime is treated as authoritative.
+6. Recover Swift metadata: build a `<Module>.swiftinterface` from `__swift5_*`
+   descriptors via the SwiftInterface builder.
+7. Write the recovered declarations to the output directory (see Output).
 
-## 2. Simulator / other runtimes
+## Output
 
-There is no separate `headerdump-sim` binary — simulator runtimes are handled in-tool:
+**This tool's output is header _files_, not agent-JSON on stdout** — a
+deliberate departure from the other tools' AgentCLI contract. It writes:
 
-- `-c` (use the dyld shared cache) and `-R` (prefer runtime metadata, auto inside a simulator).
-- The `DYLD_ROOT_PATH` / `PH_RUNTIME_ROOT` env override points at a runtime root; under `simctl spawn` use the `SIMCTL_CHILD_` prefix (`SIMCTL_CHILD_PH_RUNTIME_ROOT=…`) so it survives into the spawned process.
+- one `.h` per Objective-C **class**, **protocol**, and **category** (a category
+  filename is `<Class>+<Category>.h`), and
+- one `<Module>.swiftinterface` per Swift module (an empty/whitespace-only
+  interface is not written).
 
-## 3. Browse / grep → find a real selector, then verify at runtime
+Files land directly in the output directory by default; with `-b` they are
+placed under a rebuilt copy of the image's original directory tree, and `-h`
+adds a `Headers/` folder for bundles. `-s` skips files that already exist.
+stdout/stderr carry only diagnostics (more with `-D`), never the recovered API
+itself.
 
-Grep the dump for the behavior you want, then read the surrounding `@interface` to recover the **owning class** and **argument types**.
+> An agent-JSON query mode (e.g. emit one symbol's declaration as JSON on
+> stdout, under the `AgentCLI` contract) is a possible future addition. It is
+> out of scope here; today the deliverable is files on disk.
 
-```bash
-grep -rn "titlebar" ./private-headers/ | head
-grep -rn -B2 "setTitlebarSeparatorStyle:" ./private-headers/NSWindow.h
-```
+### Filename determinism
 
-A grep hit is only a *historical* fact about one SDK build. Private symbols move or vanish between OS versions — **verify the class and selector still exist at runtime before relying on them**. This uses only public Objective-C runtime symbols:
+Header filenames are derived deterministically. Entries are sorted (by symbol
+kind, then base name, then declaration text) before naming. A name longer than
+255 UTF-8 bytes is truncated and given a stable FNV-1a hash suffix. A
+case-insensitive filename collision (e.g. `Foo.h` vs `foo.h` on a
+case-insensitive volume) is resolved by appending a stable hash suffix derived
+from the entry's kind and base name — so the same image always produces the same
+set of filenames.
 
-```swift
-import AppKit
-import ObjectiveC.runtime
+## States & exit codes
 
-/// Returns true only if `cls` exists AND its instances respond to `sel` on THIS OS.
-func privateAPIExists(class className: String, selector selName: String) -> Bool {
-    guard let cls = NSClassFromString(className) else { return false }   // class may be gone
-    let sel = NSSelectorFromString(selName)
-    // instancesRespondToSelector: covers methods provided by categories/dynamic resolution.
-    guard cls.instancesRespond(to: sel) else { return false }
-    // Belt-and-suspenders: confirm a concrete IMP is installed.
-    return class_getInstanceMethod(cls, sel) != nil
-}
+| State | Exit | stdout / stderr |
+| --- | --- | --- |
+| success | `0` | header files written to the output dir; diagnostics only on stdout/stderr |
+| `--help` | `0` (`EXIT_SUCCESS`) | usage text |
+| usage / parse error (no input path, or missing `-o`/`-j` value) | `EXIT_FAILURE` | usage text |
+| dump error (e.g. recursive root directory not found) | `EXIT_FAILURE` | `headerdump: error: <error>` on stderr |
 
-// Guard the call site — degrade, never crash, when the OS changed under you.
-let window: NSWindow = .init()
-if privateAPIExists(class: "NSWindow", selector: "setTitlebarSeparatorStyle:"),
-   window.responds(to: NSSelectorFromString("setTitlebarSeparatorStyle:")) {
-    window.perform(NSSelectorFromString("setTitlebarSeparatorStyle:"), with: 1)
-} else {
-    // fall back to public API / no-op
-}
-```
+<!--
+  EXIT_FAILURE is the platform's non-zero failure code (1 on Darwin). headerdump
+  does not use the granular AgentCLI exit-code map (it predates and sits outside
+  that contract), so only success/failure are distinguished today.
+-->
 
-BAD foil — trusting the dump and calling blind:
+## Invariants
 
-```swift
-// ❌ Selector was real on macOS 14 but renamed by 15. perform(_:) → unrecognized selector → crash.
-window.perform(NSSelectorFromString("setTitlebarSeparatorStyle:"), with: 1)
-```
+- Writes only under the output directory; reads images from disk or the shared
+  cache. It does not mutate the source images.
+- Never exits 0 on a usage or dump error.
+- Deterministic filenames: the same image and options produce the same set of
+  output filenames (sorted entries; stable hash suffixes for truncation and
+  case-insensitive collisions).
+- An image that yields no recoverable metadata is not an error — it simply
+  produces no (or fewer) files and still exits 0.
 
-`NSClassFromString`, `NSSelectorFromString`, `instancesRespondToSelector:` / `respondsToSelector:`, and `class_getInstanceMethod` are all public SDK symbols.
+## Notes
 
-## 4. ❌ Don't / ✅ Do
+- Cost is **expensive and unbounded** relative to the JSON tools: it parses
+  whole Mach-O images and writes many files. The static class parse is
+  watchdogged (`PH_STATIC_TIMEOUT`, default 10s) because it can be pathologically
+  slow on large frameworks in modern dyld shared caches; the runtime path is a
+  complete substitute for class metadata.
+- For simulator runtimes, combine `-c` (read from the simulator's shared cache)
+  with a `PH_RUNTIME_ROOT`/`DYLD_ROOT_PATH` pointing at the runtime root; `-R`
+  is auto-enabled there.
 
-| ❌ Don't | ✅ Do |
-|---------|------|
-| `headerdump --target AppKit` (silently dumps nothing — long flag ignored, `AppKit` read as a filename) | Pass the framework **path**: `headerdump -o <dir> /System/Library/Frameworks/AppKit.framework` |
-| Read `-h` as "help" | `-h` adds a `Headers/` folder; run `headerdump` with no args for usage |
-| Expect a system framework on disk on modern macOS | Use `-c` to dump from the dyld shared cache |
-| Disable SIP / AMFI to "let the dumper read the frameworks" | It's a **static** read — needs **no** SIP/AMFI/entitlement changes (that's the *inspector*, not this) |
-| Trust a grepped selector forever | Re-verify class + selector at runtime each OS (`NSClassFromString` + `instancesRespond(to:)`) |

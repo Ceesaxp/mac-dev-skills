@@ -1,0 +1,24 @@
+name: sync
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  apple-platform-tools-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: checkout apple-platform-tools source
+        uses: actions/checkout@v6
+        with:
+          repository: malstrom/apple-platform-tools
+          path: .cache/apple-platform-tools
+      - name: check generated CLI contract references
+        env:
+          APPLE_PLATFORM_TOOLS_ROOT: .cache/apple-platform-tools
+        run: scripts/generate-apple-platform-tools-contracts.sh --check

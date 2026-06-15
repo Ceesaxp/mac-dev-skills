@@ -1,5 +1,5 @@
 ---
-name: appkit-hig
+name: apple-hig
 description: Use when a design decision turns on what the Apple Human Interface Guidelines actually say — the HIG rule/spec/best-practice for a control, pattern, layout, color, typography, accessibility, or platform convention; verifying a design claim against Apple's guidance; or needing an exact HIG specific (hit-target size, when to use one control vs another, per-platform behavior) for macOS/AppKit or any Apple platform. Bundles the complete HIG offline (snapshot 2026-06-10).
 ---
 
@@ -42,7 +42,7 @@ The HIG's six top sections; each `*.md` is a browse index linking its children.
 
 These are complementary, not redundant:
 
-- **`appkit-hig` (this skill) = the authority on *what* and *why*.** Which control the HIG calls for, when to use a sheet vs a popover, the exact rule, the cross-platform convention. It is *prose guidance*, all platforms.
+- **`apple-hig` (this skill) = the authority on *what* and *why*.** Which control the HIG calls for, when to use a sheet vs a popover, the exact rule, the cross-platform convention. It is *prose guidance*, all platforms.
 - **`appkit-design` = *how* to build it in modern AppKit.** Symbol-verified macOS 26/27 code, the control-selection corpus, Liquid Glass, semantic color/typography, window sizing — backed by the `sdk-search`/`sdk-api` tools.
 
 For macOS UI work, use both: settle the design decision against the HIG here, then implement it with **`appkit-design`**. When a HIG topic has a macOS-specific control mapping (e.g. "sidebar" → `NSSplitViewItem(sidebarWithViewController:)`), `appkit-design` is where that mapping lives.

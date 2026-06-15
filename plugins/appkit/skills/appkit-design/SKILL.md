@@ -138,3 +138,4 @@ Identifier on every interactive control (≠ label); semantic roles; respect Inc
 | `references/window-sizing.md` | Content-derived window sizing rubric and setup |
 | `references/accessibility.md` | Accessibility identifiers vs labels, semantic roles, the a11y baseline |
 | `references/design-anti-patterns.md` | The full anti-pattern catalog with corrected code |
+| `references/apple-platform-tools-contracts.md` | Generated `sdk-api` / `sdk-search` contract excerpts from apple-platform-tools |
