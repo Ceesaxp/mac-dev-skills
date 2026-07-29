@@ -6,6 +6,7 @@
     "name": "Mark",
     "email": "mark@malstrom.me"
   },
+  "agents": "./agents/appkit-dev.md",
   "skills": [
     "./skills/appkit-app-inspector",
     "./skills/appkit-code-review",
