@@ -1,6 +1,6 @@
 ---
 name: appkit-setup
-description: "Install and verify the prerequisites the AppKit dev skills depend on — Xcode 27 (for the macOS 27 SDK) with its license accepted, the Command Line Tools, Homebrew, and the CLI tools (Tuist, swift-format, create-dmg). Use when setting up a new Mac, or when another appkit skill reports a missing prerequisite (e.g. xcodebuild/tuist not found, the Xcode license isn't accepted, or no signing identity is present)."
+description: "Install and verify the prerequisites the AppKit dev skills depend on — Xcode 27 (for the macOS 27 SDK) with its license accepted, the Command Line Tools, Homebrew, the CLI tools (Tuist, swift-format, create-dmg), and the apple-platform-tools CLIs (sdk-api, sdk-search, headerdump, redump). Use when setting up a new Mac, or when another appkit skill reports a missing prerequisite (e.g. xcodebuild/tuist/sdk-api not found, the Xcode license isn't accepted, or no signing identity is present)."
 disable-model-invocation: true
 ---
 
@@ -35,6 +35,9 @@ TUIST="$(command -v tuist || true)"
 SWIFTFORMAT="$(command -v swift-format || true)"
 CREATE_DMG="$(command -v create-dmg || true)"
 
+# apple-platform-tools (sdk-api, sdk-search, headerdump, redump — one Homebrew formula)
+SDK_API="$(command -v sdk-api || true)"
+
 # Developer-mode for running tests/debugger without repeated auth prompts
 DEVTOOLS="$(DevToolsSecurity -status 2>/dev/null || true)"
 
@@ -52,6 +55,7 @@ Homebrew                 ✅ found  (or ❌ missing — will install)
 Tuist                    ❌ missing — will `brew install tuist`
 swift-format             ✅ found (ships with Xcode toolchain; standalone via brew)
 create-dmg               ❌ missing — will `brew install create-dmg`
+apple-platform-tools     ❌ missing — will `brew install markmals/tap/apple-platform-tools`
 DevToolsSecurity         ⚠ disabled — needs admin to enable
 Developer ID identity    ⏭ 0 found (only needed for signing/notarization)
 ```
@@ -119,19 +123,20 @@ If declined, print the command and continue.
 
 > **Signing identities are NOT set up here.** A **Developer ID Application** certificate is only needed for `appkit-packaging` (signing/notarization). Creating it involves the Apple Developer portal and your Apple account — out of scope for machine setup. If `appkit-packaging` later reports no identity, point the user to the portal (Certificates → Developer ID Application).
 
-##### Build the native tools (required — the suite's grounding tools)
+##### Native tools (required — the suite's grounding tools)
 
-`sdk-api` (SDK symbol/availability validator) and `sdk-search` (HIG-grounded pattern search) back the whole suite — `appkit-design` and the agent call them constantly. They live in the `apple-platform-tools` monorepo; `mise run install` builds, ad-hoc signs, and installs all four static tools (idempotent; needs the full Xcode):
+`sdk-api` (SDK symbol/availability validator) and `sdk-search` (HIG-grounded pattern search) back the whole suite — `appkit-design` and the agent call them constantly. They ship with `headerdump` and `redump` in the [apple-platform-tools](https://github.com/markmals/apple-platform-tools) Homebrew formula (prebuilt bottles for Apple silicon on macOS 15+):
 ```bash
-mise run install    # from apple-platform-tools: builds + ad-hoc signs + installs sdk-api, sdk-search, headerdump, redump (with the search corpus bundle) into ~/.local/bin
+brew install markmals/tap/apple-platform-tools   # sdk-api, sdk-search, headerdump, redump; no-op if installed
+brew upgrade markmals/tap/apple-platform-tools   # bump to latest
 ```
-Confirm they work: `sdk-api check NSGlassEffectView` and `sdk-search list` should both return JSON.
+Confirm they work: `sdk-api check NSGlassEffectView` and `sdk-search list` should both return JSON. If `command -v sdk-api` resolves to `~/.local/bin`, an older `mise run install` build is shadowing the Homebrew one — ask the user before deleting those copies.
 
 ##### Optional research tooling (advanced / dual-use — only if the user wants it)
 
-`headerdump` and `redump` (static binary RE, used by `appkit-private-apis`) install with the core tools above (`mise run install`) — no extra setup, no SIP changes. The one tool **not** installed by default:
+`headerdump` and `redump` (static binary RE, used by `appkit-private-apis`) install with the core tools above (same Homebrew formula) — no extra setup, no SIP changes. The one tool **not** installed by default:
 
-- **uitool** (runtime inspector, drives `appkit-app-inspector`) — also in the `apple-platform-tools` monorepo, but deliberately **excluded** from `mise run install` (it's an injection tool). Build + sign it with `mise run uitool-sign` (grants the debugger entitlement needed for `attach`), then gate with `uitool doctor`. doctor reports two postures: **cooperative** (your own get-task-allow apps — works on a stock SIP-on Mac, no defang) and **unrestricted** (system/notarized apps — needs the dev-box defang). The signed injectable never ships. See `appkit-app-inspector`.
+- **uitool** (runtime inspector, drives `appkit-app-inspector`) — built from source in [apple-platform-tools](https://github.com/markmals/apple-platform-tools) and deliberately **excluded** from the Homebrew formula (it's an injection tool). Clone the repo and run `mise run uitool-sign` from the clone (builds it and grants the debugger entitlement needed for `attach`), then gate with `uitool doctor`. doctor reports two postures: **cooperative** (your own get-task-allow apps — works on a stock SIP-on Mac, no defang) and **unrestricted** (system/notarized apps — needs the dev-box defang). The signed injectable never ships. See `appkit-app-inspector`.
 
 ### Final summary — always print this
 
@@ -146,9 +151,9 @@ Tuist                 ✅ installed
 swift-format          ✅ upgraded to latest
 create-dmg            ✅ installed
 DevToolsSecurity      ✅ enabled   (or ⏭ skipped — user declined)
-Native tools          ✅ sdk-api + sdk-search + headerdump + redump installed (~/.local/bin)
+Native tools          ✅ sdk-api + sdk-search + headerdump + redump installed (brew: markmals/tap/apple-platform-tools)
 Developer ID identity ⏭ 0 found (only needed for signing — see appkit-packaging)
-Runtime inspector     ⏭ uitool not built (optional; mise run uitool-sign — see appkit-app-inspector)
+Runtime inspector     ⏭ uitool not built (optional; clone apple-platform-tools, then mise run uitool-sign — see appkit-app-inspector)
 
 You're ready. Try:
   Activate the appkit-dev agent and ask it to "build me a macOS markdown editor with a live preview"

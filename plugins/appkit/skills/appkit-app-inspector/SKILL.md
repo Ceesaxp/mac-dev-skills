@@ -24,7 +24,7 @@ How much uitool costs depends entirely on **who signed the target**, not on the 
 
 ## What still holds for BOTH postures (containment)
 
-- **The injectable never ships.** The signed `UIToolBoot` dylib is a code-loading primitive — an attack tool on any other machine. It is `.gitignore`d and must never reach a shippable target, a release build, release CI, or a committed entitlements file. uitool is deliberately **excluded** from `mise run install`; it is dev-only.
+- **The injectable never ships.** The signed `UIToolBoot` dylib is a code-loading primitive — an attack tool on any other machine. It is `.gitignore`d and must never reach a shippable target, a release build, release CI, or a committed entitlements file. uitool is deliberately **excluded** from the Homebrew formula and from `mise run install`; it is dev-only.
 - **Only knowledge crosses into your product** — a font, a row height, a constraint, a material — **never** the tool or the injection step.
 - **Don't inspect your own *shipping* app with it** — use a debugger you own. Use uitool to learn from apps you can't debug.
 - **v1 is read-only.** No write/mutation verbs. Even `inspect --invoke` (running a target's getters) is opt-in and gated — it runs code in someone else's process.
@@ -116,13 +116,15 @@ Most findings translate to clean public AppKit — but if you reproduce somethin
 
 ## Getting uitool
 
-uitool ships in the `apple-platform-tools` monorepo (`../../Projects/apple-platform-tools`). It is **not** installed by `mise run install` (containment — it's an injection tool). Build + sign it for the cooperative path with:
+uitool is built from source in [apple-platform-tools](https://github.com/markmals/apple-platform-tools). The Homebrew formula (`markmals/tap/apple-platform-tools`) deliberately leaves it out (containment — it's an injection tool). Clone the repo, then build + sign uitool for the cooperative path from the clone:
 
 ```bash
+git clone https://github.com/markmals/apple-platform-tools.git
+cd apple-platform-tools
 mise run uitool-sign     # builds, then codesigns uitool with com.apple.security.cs.debugger (needed for attach)
 ```
 
-The arm64 `UIToolBoot` injectable is built alongside it and stays in `.build` (gitignored, never distributed). `appkit-setup` handles this if the monorepo is present. Read `uitool <verb> --help` / `uitool schema` for exact flags and the output contract — they are the source of truth.
+The arm64 `UIToolBoot` injectable is built alongside it and stays in `.build` (gitignored, never distributed). `appkit-setup` handles this if a clone is present. Read `uitool <verb> --help` / `uitool schema` for exact flags and the output contract — they are the source of truth.
 
 ## References
 
