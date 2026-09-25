@@ -1,6 +1,6 @@
 ---
 name: appkit-setup
-description: "Install and verify the prerequisites the AppKit dev skills depend on — Xcode 27 (for the macOS 27 SDK) with its license accepted, the Command Line Tools, Homebrew, the CLI tools (Tuist, swift-format, create-dmg), and the apple-platform-tools CLIs (sdk-api, sdk-search, headerdump, redump). Use when setting up a new Mac, or when another appkit skill reports a missing prerequisite (e.g. xcodebuild/tuist/sdk-api not found, the Xcode license isn't accepted, or no signing identity is present)."
+description: "Install and verify the prerequisites the AppKit dev skills depend on — Xcode 27 (for the macOS 27 SDK) with its license accepted, the Command Line Tools, Homebrew, the CLI tools (Tuist, swift-format, create-dmg), and the apple-platform-tools CLIs (sdk-api, sdk-search, headerdump, redump, uitool). Use when setting up a new Mac, or when another appkit skill reports a missing prerequisite (e.g. xcodebuild/tuist/sdk-api not found, the Xcode license isn't accepted, or no signing identity is present)."
 disable-model-invocation: true
 ---
 
@@ -132,11 +132,11 @@ brew upgrade markmals/tap/apple-platform-tools   # bump to latest
 ```
 Confirm they work: `sdk-api check NSGlassEffectView` and `sdk-search list` should both return JSON. If `command -v sdk-api` resolves to `~/.local/bin`, an older `mise run install` build is shadowing the Homebrew one — ask the user before deleting those copies.
 
-##### Optional research tooling (advanced / dual-use — only if the user wants it)
+##### Runtime inspector — the unrestricted posture (advanced / dual-use)
 
-`headerdump` and `redump` (static binary RE, used by `appkit-private-apis`) install with the core tools above (same Homebrew formula) — no extra setup, no SIP changes. The one tool **not** installed by default:
+`headerdump`, `redump`, and `uitool` all install with the core tools above (same Homebrew formula). `uitool` ships with its boot dylib and the debugger entitlement, so the **cooperative** posture — inspect your own get-task-allow apps on a stock SIP-on Mac, no defang — works out of the box; confirm with `uitool doctor`. The one thing the formula does **not** set up:
 
-- **uitool** (runtime inspector, drives `appkit-app-inspector`) — built from source in [apple-platform-tools](https://github.com/markmals/apple-platform-tools) and deliberately **excluded** from the Homebrew formula (it's an injection tool). Clone the repo and run `mise run uitool-sign` from the clone (builds it and grants the debugger entitlement needed for `attach`), then gate with `uitool doctor`. doctor reports two postures: **cooperative** (your own get-task-allow apps — works on a stock SIP-on Mac, no defang) and **unrestricted** (system/notarized apps — needs the dev-box defang). The signed injectable never ships. See `appkit-app-inspector`.
+- **The unrestricted posture** (inspecting system / notarized apps you did NOT sign) needs the arm64e injectable and a machine-wide defang (SIP + AMFI + library validation off) on a dedicated dev box — build that from a clone. `uitool doctor` reports both postures. See `appkit-app-inspector`.
 
 ### Final summary — always print this
 
@@ -151,9 +151,9 @@ Tuist                 ✅ installed
 swift-format          ✅ upgraded to latest
 create-dmg            ✅ installed
 DevToolsSecurity      ✅ enabled   (or ⏭ skipped — user declined)
-Native tools          ✅ sdk-api + sdk-search + headerdump + redump installed (brew: markmals/tap/apple-platform-tools)
+Native tools          ✅ sdk-api + sdk-search + headerdump + redump + uitool installed (brew: markmals/tap/apple-platform-tools)
 Developer ID identity ⏭ 0 found (only needed for signing — see appkit-packaging)
-Runtime inspector     ⏭ uitool not built (optional; clone apple-platform-tools, then mise run uitool-sign — see appkit-app-inspector)
+Runtime inspector     ✅ uitool cooperative posture ready (unrestricted needs a dev-box defang — see appkit-app-inspector)
 
 You're ready. Try:
   Activate the appkit-dev agent and ask it to "build me a macOS markdown editor with a live preview"

@@ -17,7 +17,7 @@ Install `sdk-api`, `sdk-search`, `headerdump`, and `redump` from Homebrew:
 ```bash
 brew install markmals/tap/apple-platform-tools
 ```
-`uitool` is not in the formula (it's an injection tool); build it from a clone of apple-platform-tools with `mise run uitool-sign` (see `appkit-app-inspector`).
+`uitool` is in the formula too — the cooperative build, signed for `attach`. The unrestricted posture (apps you didn't sign) needs the arm64e injectable and a defanged dev box, built from a clone (see `appkit-app-inspector`).
 
 To rebuild the superseded originals retained under `src/tools/`:
 ```bash

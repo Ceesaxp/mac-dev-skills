@@ -24,7 +24,7 @@ How much uitool costs depends entirely on **who signed the target**, not on the 
 
 ## What still holds for BOTH postures (containment)
 
-- **The injectable never ships.** The signed `UIToolBoot` dylib is a code-loading primitive — an attack tool on any other machine. It is `.gitignore`d and must never reach a shippable target, a release build, release CI, or a committed entitlements file. uitool is deliberately **excluded** from the Homebrew formula and from `mise run install`; it is dev-only.
+- **The cooperative build ships; the unrestricted injectable stays dev-box only.** The arm64 `uitool` + `UIToolBoot` dylib install from the Homebrew formula, signed for the cooperative attach path. The **arm64e** injectable — the slice that loads into apps you did NOT sign — is a separate dev-box build that needs the machine defang; it is not distributed. Never bake the injector or the injection step into an app you ship.
 - **Only knowledge crosses into your product** — a font, a row height, a constraint, a material — **never** the tool or the injection step.
 - **Don't inspect your own *shipping* app with it** — use a debugger you own. Use uitool to learn from apps you can't debug.
 - **v1 is read-only.** No write/mutation verbs. Even `inspect --invoke` (running a target's getters) is opt-in and gated — it runs code in someone else's process.
@@ -55,7 +55,7 @@ uitool detach <app>                                   # end the session; target 
 ```
 
 - **`launch`** spawns the target under `DYLD_INSERT_LIBRARIES` (`posix_spawn`). Robust across OS/app updates; **loses the target's current on-screen state** (it's a fresh launch). `--replace` terminates a running instance first.
-- **`attach`** acquires a running target's task port (lldb-style `task_for_pid`) and remote-`dlopen`s the dylib. **Preserves live UI state** — the research default ("inspect it as it sits right now"). Requires uitool signed with the debugger entitlement (`mise run uitool-sign`).
+- **`attach`** acquires a running target's task port (lldb-style `task_for_pid`) and remote-`dlopen`s the dylib. **Preserves live UI state** — the research default ("inspect it as it sits right now"). Requires uitool signed with the debugger entitlement — the Homebrew formula signs it; a from-clone build uses `mise run uitool-sign`.
 - `<app>` = pid, bundle id, `.app` path, or executable path. A second `attach` on an already-injected target reuses the session.
 
 ## Step 3 — filter → drill (never full-dump)
@@ -116,15 +116,13 @@ Most findings translate to clean public AppKit — but if you reproduce somethin
 
 ## Getting uitool
 
-uitool is built from source in [apple-platform-tools](https://github.com/markmals/apple-platform-tools). The Homebrew formula (`markmals/tap/apple-platform-tools`) deliberately leaves it out (containment — it's an injection tool). Clone the repo, then build + sign uitool for the cooperative path from the clone:
+uitool installs from the [apple-platform-tools](https://github.com/markmals/apple-platform-tools) Homebrew formula, alongside the static tools:
 
 ```bash
-git clone https://github.com/markmals/apple-platform-tools.git
-cd apple-platform-tools
-mise run uitool-sign     # builds, then codesigns uitool with com.apple.security.cs.debugger (needed for attach)
+brew install markmals/tap/apple-platform-tools   # installs uitool + its boot dylib, signed for attach
 ```
 
-The arm64 `UIToolBoot` injectable is built alongside it and stays in `.build` (gitignored, never distributed). `appkit-setup` handles this if a clone is present. Read `uitool <verb> --help` / `uitool schema` for exact flags and the output contract — they are the source of truth.
+The formula ships the arm64 `UIToolBoot` injectable beside `uitool` and signs `uitool` with `com.apple.security.cs.debugger`, so the cooperative posture (`launch` and `attach` against your own dev-signed apps) works on a stock, SIP-enabled Mac — run `uitool doctor` to confirm (`cooperative.usable: true`). The **unrestricted** posture (apps you did not sign) additionally needs the arm64e injectable and a defanged dev box, built from a clone. Read `uitool <verb> --help` / `uitool schema` for exact flags and the output contract — they are the source of truth.
 
 ## References
 
