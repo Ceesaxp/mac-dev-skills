@@ -135,7 +135,7 @@ Both **cooperative** paths — launch and task-port attach-to-running — ship i
 - **Unrestricted needs the full defang** — SIP off, AMFI boot-arg, libval off, arm64e ABI boot-arg, and an **arm64e** injectable. It is required **only** for targets the user did not sign.
 - Each precondition is judged independently; no check is skipped because another failed.
 - v1 is read-only — no write/mutation ops.
-- **Signed-artifact containment holds for BOTH postures.** The signed `UIToolBoot` dylib (and any framework / CLI) is **gitignored and never distributed** — dev box only; it is an attack tool on any other machine ([[architecture]] → "Dual-use & safety posture"). Cooperative being a stock-Mac posture does **not** relax this — the injectable is still a signed code-loading primitive that must not leave the dev box.
+- **The cooperative arm64 injectable ships with the tool; the unrestricted arm64e slice does not.** The arm64 `UIToolBoot` dylib installs beside `uitool` as a source-built developer tool (Homebrew) — a build output, gitignored, never a committed blob, never embedded in an app you ship. The **arm64e** slice stays dev-box only: it exists to load into apps you did not sign, which is only possible on a machine-wide-defanged box ([[architecture]] → "Dual-use & safety posture").
 
 ## Relationships
 
@@ -251,14 +251,15 @@ a healthy server to reuse; the next attach treats it as a fresh attach
 - **Arch must match the target.** Ship arm64 for cooperative, arm64e for
   unrestricted; a mismatch is a silent dyld no-load, caught only by the bounded
   attach poll as exit 4.
-- **Containment is absolute and is the reason this dylib is dangerous.** The
-  signed `UIToolBoot.dylib` (either slice) is `.gitignore`d, **never committed**,
-  **never** added to a shippable target or a release CI job
-  ([[domain.uitool.injection]] containment; [[architecture]] → "Dual-use & safety
-  posture"). It is a signed code-loading primitive: on any machine but the dev box
-  it is an attack tool. The cooperative posture running on a stock Mac does **not**
-  relax this — a stock-Mac-capable injectable is, if anything, more dangerous to
-  leak, not less.
+- **Distributed as a build output, never embedded in a shipped product.** The
+  arm64 `UIToolBoot.dylib` ships as part of the `uitool` developer tool — built
+  from source, installed beside the CLI (e.g. the Homebrew formula), the way any
+  debugger installs its helpers. It stays a build output (`.gitignore`d, produced
+  on install), never a committed blob, and is never linked into or bundled with an
+  app you ship. The **arm64e** slice — the one that loads into apps you did not
+  sign — stays dev-box only, because the machine it targets is deliberately
+  defanged, not because the file is secret ([[domain.uitool.injection]];
+  [[architecture]] → "Dual-use & safety posture").
 - **No behavior beyond hosting the server.** Any reflection, walking, or IPC logic
   belongs in [[domain.uitool.server]] / `RuntimeKit`, not here. The dylib is the
   foothold; the moment it grows logic, it has stopped being auditable-at-a-glance.
