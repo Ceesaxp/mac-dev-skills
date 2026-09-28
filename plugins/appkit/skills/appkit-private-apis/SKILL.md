@@ -26,7 +26,7 @@ Private-API use is a **distribution** decision, not a correctness one. Whenever 
 
 ### 1. Discover the private surface — headerdump + redump
 
-Two **static** tools in the `apple-platform-tools` monorepo, installed together (`mise run install` → `~/.local/bin`). Both read the binary / dyld shared cache — **no SIP/AMFI changes, no entitlements** (unlike runtime injection — see `appkit-app-inspector`).
+Two **static** tools from [apple-platform-tools](https://github.com/markmals/apple-platform-tools), installed together with `brew install markmals/tap/apple-platform-tools`. Both read the binary / dyld shared cache — **no SIP/AMFI changes, no entitlements** (unlike runtime injection — see `appkit-app-inspector`).
 
 - **`headerdump`** recovers an Objective-C framework's headers (class/method/property/ivar/protocol). Legacy-style CLI, single-letter flags, positional **path** (not an SDK target name):
 

@@ -2,10 +2,10 @@
 #
 # SUPERSEDED. This script builds the original `appkit-api` / `appkit-search`
 # sources retained under `src/tools/` (see src/tools/DEPRECATED.md). The
-# canonical tools now live in the `apple-platform-tools` monorepo at
-# ~/Developer/Projects/apple-platform-tools as `sdk-api` / `sdk-search`,
-# and are built and installed from there via `mise run install`. New work
-# happens in the monorepo; this script is kept only to rebuild the historical
+# canonical tools now live in apple-platform-tools
+# (https://github.com/markmals/apple-platform-tools) as `sdk-api` /
+# `sdk-search`; install them with `brew install markmals/tap/apple-platform-tools`.
+# New work happens there; this script is kept only to rebuild the historical
 # originals.
 #
 # Build the native AppKit dev tools, ad-hoc sign them, and install into the

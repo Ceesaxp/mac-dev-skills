@@ -120,7 +120,7 @@ The agent branches on exit code without parsing prose:
 A successful query that matches **nothing** is exit **0** (with `_meta.totalMatched: 0`), never a non-zero code — see Notes.
 
 - **Exit 3 (app not running) and exit 6 (precondition) are attach-time only.** Exit 3 is emitted by `attach` while resolving/launching a named target; exit 6 by `doctor` and `attach` (the precondition gate). `list-apps` emits neither — it enumerates (0/2 only). Post-attach query verbs assume a live session; an unreachable session surfaces as **exit 4** (`NOT_ATTACHED`) or **exit 7** (`TIMEOUT`), never 3 or 6.
-- This table governs the **CLI↔agent control channel only.** The commit/CI dual-use containment guard runs outside it and has its own non-zero convention (it fails the build/commit); it does not map to these codes.
+- This table governs the **CLI↔agent control channel only** — build- and install-time failures use their own conventions and do not map to these codes.
 
 ## Invariants
 

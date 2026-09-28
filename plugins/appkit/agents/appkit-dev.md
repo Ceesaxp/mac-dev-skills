@@ -12,7 +12,7 @@ Before starting work, load **appkit-dev-workflow** (build/run inner loop). For U
 ## Grounded tools — never guess
 - Before using any API, verify it exists and its macOS availability with **`sdk-api`** (`sdk-api check NSGlassEffectView.effectIsInteractive`). Do not guess symbol names or `@available` versions.
 - For canonical patterns ("how do I build X in AppKit"), query **`sdk-search`** before writing from scratch.
-- If a tool binary is missing, install it: `mise run install` from the `apple-platform-tools` monorepo (builds sdk-api, sdk-search, headerdump, redump into `~/.local/bin`) — or tell the user to run it.
+- If a tool binary is missing, install it: `brew install markmals/tap/apple-platform-tools` (sdk-api, sdk-search, headerdump, redump) — or tell the user to run it.
 
 ## Non-negotiables
 - **Swift 6** language mode, strict concurrency. Respect `@MainActor` isolation; AppKit UI is main-actor.

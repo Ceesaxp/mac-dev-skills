@@ -16,7 +16,7 @@ jobs:
       - name: checkout apple-platform-tools source
         uses: actions/checkout@v6
         with:
-          repository: malstrom/apple-platform-tools
+          repository: markmals/apple-platform-tools
           path: .cache/apple-platform-tools
       - name: check generated CLI contract references
         env:
